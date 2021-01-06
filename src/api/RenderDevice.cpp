@@ -9,7 +9,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData) {
 
-	int minSeveritry = 1;
+	int minSeveritry = 2;
 
 	switch (messageSeverity)
 	{
@@ -76,7 +76,7 @@ void RenderDevice::createInstance(std::vector<const char*> extensions, std::vect
 		if (!found)
 		{
 			std::cout << "Cannot find extension: " << extensions[i] << std::endl;
-			return;
+			PAUSE_AND_EXIT(-1)
 		}
 	}
 
@@ -102,8 +102,8 @@ void RenderDevice::createInstance(std::vector<const char*> extensions, std::vect
 
 		if (!found)
 		{
-			std::cout << "Cannot find layer: " << extensions[i] << std::endl;
-			return;
+			std::cout << "Cannot find layer: " << validationLayers[i] << std::endl;
+			PAUSE_AND_EXIT(-1)
 		}
 	}
 
@@ -167,8 +167,7 @@ void RenderDevice::choosePhysicalDevice()
 	if (bestDevice == VK_NULL_HANDLE)
 	{
 		std::cout << "Cannot find adequate GPU!" << std::endl;
-		std::cin.get();
-		std::exit(-1);
+		PAUSE_AND_EXIT(-1)
 	}
 
 	m_physicalDevice = bestDevice;
@@ -238,7 +237,7 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 		if (!found)
 		{
 			std::cout << "Cannot find extension: " << extensions[i] << std::endl;
-			return;
+			PAUSE_AND_EXIT(-1)
 		}
 	}
 
@@ -264,8 +263,8 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 
 		if (!found)
 		{
-			std::cout << "Cannot find layer: " << extensions[i] << std::endl;
-			return;
+			std::cout << "Cannot find layer: " << validationLayers[i] << std::endl;
+			PAUSE_AND_EXIT(-1)
 		}
 	}
 
@@ -292,8 +291,7 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 	if (m_queueFamilyIndex == (uint32_t)-1)
 	{
 		std::cout << "Cannot find queue family that supports graphics operations!" << std::endl;
-		std::cin.get();
-		std::exit(-1);
+		PAUSE_AND_EXIT(-1)
 	}
 
 	float priority = 1.0f;

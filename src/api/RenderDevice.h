@@ -7,6 +7,8 @@
 
 #include "Window.h"
 
+#define PAUSE_AND_EXIT(x) std::cin.get(); std::exit(x);
+
 #define VK_CHECK(x) checkVK(x, __FILE__, __LINE__)
 
 inline bool checkVK(VkResult result, const char* file, unsigned int line)

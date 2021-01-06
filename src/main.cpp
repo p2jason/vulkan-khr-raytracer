@@ -48,7 +48,7 @@ int main()
 	const char** glfwExtensions = window.getRequiredExtensions(glfwExtensionCount);
 	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-	std::vector<const char*> validationLayers({ "VK_LAYER_LUNARG_standard_validation", "VK_LAYER_KHRONOS_validation" });
+	std::vector<const char*> validationLayers({ "VK_LAYER_KHRONOS_validation" });//"VK_LAYER_LUNARG_standard_validation"
 
 	glm::ivec2 viewportSize = window.getViewportSize();
 
