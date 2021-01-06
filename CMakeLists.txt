@@ -77,11 +77,7 @@ file(GLOB_RECURSE SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.h" "${PROJECT_SOURCE
 
 include_directories("${PROJECT_SOURCE_DIR}/src/")
 
-if(WIN32)
-	add_executable(${PROJECT_NAME} WIN32 ${SOURCE_FILES})
-else()
-	add_executable(${PROJECT_NAME} ${SOURCE_FILES})
-endif()
+add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
 target_link_libraries(${PROJECT_NAME} Vulkan-Headers)
 target_link_libraries(${PROJECT_NAME} glfw)
