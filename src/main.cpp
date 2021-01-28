@@ -1,9 +1,15 @@
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 #include <volk.h>
 
 #include "api/Window.h"
 #include "api/RenderDevice.h"
+
+#include "api/Swapchain.h"
+
+#include <glm/glm.hpp>
 
 std::vector<VkFramebuffer> createFramebuffers(VkDevice device, int width, int height, const std::vector<VkImageView>& imageViews, VkRenderPass renderPass)
 {
@@ -44,9 +50,12 @@ int main()
 	}
 
 	//Setup render device
+	SwapchainFactory swapchainFactory;
+	std::vector<const char*> extensions = swapchainFactory.determineInstanceExtensions();
+
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions = window.getRequiredExtensions(glfwExtensionCount);
-	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+	extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
 
 	std::vector<const char*> validationLayers({ "VK_LAYER_LUNARG_standard_validation", "VK_LAYER_KHRONOS_validation" });
 
@@ -56,8 +65,14 @@ int main()
 	renderDevice.createInstance(extensions, validationLayers, true);
 	renderDevice.createSurface(window);
 	renderDevice.choosePhysicalDevice();
-	renderDevice.createLogicalDevice({ VK_KHR_SWAPCHAIN_EXTENSION_NAME }, validationLayers);
-	renderDevice.createSwapchain(viewportSize.x, viewportSize.y);
+
+	std::vector<const char*> deviceExtensions = swapchainFactory.determineDeviceExtensions(renderDevice.getPhysicalDevice());
+	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+	renderDevice.createLogicalDevice(deviceExtensions, validationLayers);
+	
+	SurfaceProfile profile = swapchainFactory.createProfileForSurface(renderDevice.getPhysicalDevice(), renderDevice.getSurface(), {}, FullScreenExclusiveMode::DEFAULT, nullptr);
+	Swapchain swapchain = swapchainFactory.createSwapchain(renderDevice.getDevice(), renderDevice.getSurface(), profile, viewportSize.x, viewportSize.y);
 
 	//Create command pool & buffer
 	VkDevice device = renderDevice.getDevice();
@@ -94,7 +109,7 @@ int main()
 	VkRenderPass renderPass;
 	{
 		VkAttachmentDescription attachments[1] = {};
-		attachments[0].format = renderDevice.getSurfaceFormat().format;
+		attachments[0].format = swapchain.getFormat().format;
 		attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -138,7 +153,7 @@ int main()
 		VK_CHECK(vkCreateRenderPass(device, &renderPassCI, nullptr, &renderPass));
 	}
 
-	std::vector<VkFramebuffer> framebuffers = createFramebuffers(device, viewportSize.x, viewportSize.y, renderDevice.getSwapchainImageViews(), renderPass);
+	std::vector<VkFramebuffer> framebuffers = createFramebuffers(device, viewportSize.x, viewportSize.y, swapchain.getImageViews(), renderPass);
 
 	while (!window.isCloseRequested())
 	{
@@ -152,14 +167,15 @@ int main()
 			viewportSize = currentViewport;
 
 			destroyFramebuffers(device, framebuffers);
-			renderDevice.destroySwapchain();
+			swapchain.destroy();
 
-			renderDevice.createSwapchain(currentViewport.x, currentViewport.y);
-			framebuffers = createFramebuffers(device, currentViewport.x, currentViewport.y, renderDevice.getSwapchainImageViews(), renderPass);
+			profile = swapchainFactory.createProfileForSurface(renderDevice.getPhysicalDevice(), renderDevice.getSurface(), {}, FullScreenExclusiveMode::DEFAULT, nullptr);
+			swapchain = swapchainFactory.createSwapchain(renderDevice.getDevice(), renderDevice.getSurface(), profile, viewportSize.x, viewportSize.y);
+			framebuffers = createFramebuffers(device, currentViewport.x, currentViewport.y, swapchain.getImageViews(), renderPass);
 		}
 
 		//Render
-		uint32_t imageIndex = renderDevice.acquireNextImage(imageAvailableSemaphore);
+		uint32_t imageIndex = swapchain.acquireNextImage(imageAvailableSemaphore);
 
 		VkCommandBufferBeginInfo beginInfo = {};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -187,7 +203,7 @@ int main()
 
 		renderDevice.submit({ commandBuffer }, { { imageAvailableSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT } }, { renderCompleteSemaphore }, renderFinishedFence);
 
-		renderDevice.present(imageIndex, { renderCompleteSemaphore });
+		swapchain.present(renderDevice.getQueue(), imageIndex, { renderCompleteSemaphore });
 
 		VK_CHECK(vkWaitForFences(device, 1, &renderFinishedFence, VK_TRUE, UINT64_MAX));
 		VK_CHECK(vkResetFences(device, 1, &renderFinishedFence));
@@ -203,7 +219,9 @@ int main()
 
 	vkDestroyCommandPool(device, commandPool, nullptr);
 
+	swapchain.destroy();
 	renderDevice.destroy();
+
 	window.terminate();
 
 	return 0;
