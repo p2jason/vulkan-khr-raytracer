@@ -65,6 +65,12 @@ inline bool checkVK(VkResult result, const char* file, unsigned int line)
 	return true;
 }
 
+struct Buffer
+{
+	VkBuffer buffer;
+	VkDeviceMemory memory;
+};
+
 class RenderDevice
 {
 private:
@@ -87,6 +93,9 @@ public:
 
 	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
 	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
+
+	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
+	void destroyBuffer(Buffer buffer) const;
 
 	void destroy();
 

@@ -59,6 +59,8 @@ std::vector<const char*> SwapchainFactory::determineDeviceExtensions(VkPhysicalD
 		}
 	}
 
+	requiredExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
 	return requiredExtensions;
 }
 

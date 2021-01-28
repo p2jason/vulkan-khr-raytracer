@@ -3,6 +3,22 @@
 #include <iostream>
 #include <algorithm>
 
+uint32_t findMemoryType(uint32_t typeFilter, const VkPhysicalDeviceMemoryProperties& memProperties, VkMemoryPropertyFlags properties)
+{
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
+	{
+		if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		{
+			return i;
+		}
+	}
+
+	std::cout << "Cannot find appropriate memory heap" << std::endl;
+	std::exit(-1);
+
+	return (uint32_t)-1;
+}
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -319,6 +335,47 @@ void RenderDevice::submit(const std::vector<VkCommandBuffer>& commandBuffers, co
 	submitInfo.pSignalSemaphores = signalSemaphores.data();
 
 	VK_CHECK(vkQueueSubmit(m_queue, 1, &submitInfo, signalFence));
+}
+
+Buffer RenderDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const
+{
+	VkBufferCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	createInfo.size = size;
+	createInfo.usage = usage;
+	createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	createInfo.queueFamilyIndexCount = 0;
+	createInfo.pQueueFamilyIndices = nullptr;
+	
+	VkBuffer buffer;
+	VK_CHECK(vkCreateBuffer(m_device, &createInfo, nullptr, &buffer));
+
+	VkMemoryRequirements requirements;
+	vkGetBufferMemoryRequirements(m_device, buffer, &requirements);
+
+	VkMemoryAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = requirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, m_memProperties, properties);
+
+	VkDeviceMemory memory;
+	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &memory));
+	VK_CHECK(vkBindBufferMemory(m_device, buffer, memory, 0));
+
+	return { buffer, memory };
+}
+
+void RenderDevice::destroyBuffer(Buffer buffer) const
+{
+	if (buffer.buffer != VK_NULL_HANDLE)
+	{
+		vkDestroyBuffer(m_device, buffer.buffer, nullptr);
+	}
+
+	if (buffer.memory != VK_NULL_HANDLE)
+	{
+		vkFreeMemory(m_device, buffer.memory, nullptr);
+	}
 }
 
 void RenderDevice::destroy()

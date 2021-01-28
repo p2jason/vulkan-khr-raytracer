@@ -51,10 +51,11 @@ int main()
 
 	//Setup render device
 	SwapchainFactory swapchainFactory;
-	std::vector<const char*> extensions = swapchainFactory.determineInstanceExtensions();
 
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions = window.getRequiredExtensions(glfwExtensionCount);
+
+	std::vector<const char*> extensions = swapchainFactory.determineInstanceExtensions();
 	extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
 
 	std::vector<const char*> validationLayers({ "VK_LAYER_LUNARG_standard_validation", "VK_LAYER_KHRONOS_validation" });
@@ -67,7 +68,6 @@ int main()
 	renderDevice.choosePhysicalDevice();
 
 	std::vector<const char*> deviceExtensions = swapchainFactory.determineDeviceExtensions(renderDevice.getPhysicalDevice());
-	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
 	renderDevice.createLogicalDevice(deviceExtensions, validationLayers);
 	
@@ -171,6 +171,7 @@ int main()
 
 			profile = swapchainFactory.createProfileForSurface(renderDevice.getPhysicalDevice(), renderDevice.getSurface(), {}, FullScreenExclusiveMode::DEFAULT, nullptr);
 			swapchain = swapchainFactory.createSwapchain(renderDevice.getDevice(), renderDevice.getSurface(), profile, viewportSize.x, viewportSize.y);
+
 			framebuffers = createFramebuffers(device, currentViewport.x, currentViewport.y, swapchain.getImageViews(), renderPass);
 		}
 
