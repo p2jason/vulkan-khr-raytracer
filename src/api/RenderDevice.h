@@ -67,6 +67,12 @@ inline bool checkVK(VkResult result, const char* file, unsigned int line)
 	return true;
 }
 
+struct Buffer
+{
+	VkBuffer buffer;
+	VkDeviceMemory memory;
+};
+
 class RenderDevice
 {
 private:
@@ -77,17 +83,8 @@ private:
 	VkPhysicalDeviceMemoryProperties m_memProperties;
 	uint32_t m_queueFamilyIndex = (uint32_t)-1;
 
-	VkSurfaceCapabilitiesKHR m_surfaceCapabilities = {};
-	VkSurfaceFormatKHR m_swapchainFormat = {};
-	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;;
-	VkExtent2D m_swapchainExtent = {};
-
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkQueue m_queue = VK_NULL_HANDLE;
-
-	VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
-	std::vector<VkImage> m_swapchainImages;
-	std::vector<VkImageView> m_swapchainImageViews;
 public:
 	RenderDevice() {}
 
@@ -95,19 +92,19 @@ public:
 	void createSurface(const Window& window);
 	void choosePhysicalDevice();
 	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers);
-	void createSwapchain(int width, int height);
 
 	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
-	uint32_t acquireNextImage(VkSemaphore semaphore) const;
 	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
-	void present(uint32_t imageIndex, const std::vector<VkSemaphore>& waitSemaphores) const;
 
-	void destroySwapchain();
+	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
+	void destroyBuffer(Buffer buffer) const;
+
 	void destroy();
 
+	inline VkInstance getInstance() const { return m_instance; }
 	inline VkDevice getDevice() const { return m_device; }
 	inline VkQueue getQueue() const { return m_queue; }
-	inline VkSurfaceFormatKHR getSurfaceFormat() const { return m_swapchainFormat; }
-	inline const std::vector<VkImage>& getSwapchainImages() const { return m_swapchainImages; }
-	inline const std::vector<VkImageView>& getSwapchainImageViews() const { return m_swapchainImageViews; }
+
+	inline VkSurfaceKHR getSurface() const { return m_surface; }
+	inline VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
 };

@@ -41,6 +41,7 @@ if(WIN32)
 	
 	add_compile_definitions(_GLFW_WIN32)
 	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+	add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
 elseif(APPLE)
 	set(GLFW_PLATFORM_SOURCES "")
 elseif(UNIX)
