@@ -91,13 +91,16 @@ public:
 	void createInstance(std::vector<const char*> extensions, std::vector<const char*> validationLayers, bool enableDebugMessenger);
 	void createSurface(const Window& window);
 	void choosePhysicalDevice();
-	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers);
+	void getPhysicalDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNextChain) const;
+	void getPhysicalDevicePropertes(VkPhysicalDeviceProperties* properties, void* pNextChain) const;
+	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain = nullptr);
 
 	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
 	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
 
 	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
-	void destroyBuffer(Buffer buffer) const;
+	VkDeviceAddress getBufferAddress(VkBuffer buffer) const;
+	void destroyBuffer(Buffer& buffer) const;
 
 	void destroy();
 

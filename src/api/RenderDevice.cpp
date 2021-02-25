@@ -190,7 +190,35 @@ void RenderDevice::choosePhysicalDevice()
 	vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_memProperties);
 }
 
-void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers)
+void RenderDevice::getPhysicalDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNextChain) const
+{
+	VkPhysicalDeviceFeatures2 features2 = {};
+	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	features2.pNext = pNextChain;
+
+	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &features2);
+
+	if (features)
+	{
+		*features = features2.features;
+	}
+}
+
+void RenderDevice::getPhysicalDevicePropertes(VkPhysicalDeviceProperties* properties, void* pNextChain) const
+{
+	VkPhysicalDeviceProperties2	properties2 = {};
+	properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	properties2.pNext = pNextChain;
+
+	vkGetPhysicalDeviceProperties2(m_physicalDevice, &properties2);
+
+	if (properties)
+	{
+		*properties = properties2.properties;
+	}
+}
+
+void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain)
 {
 	//Check extension support
 	uint32_t extensionCount = 0;
@@ -283,6 +311,7 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 	//Create logical device
 	VkDeviceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	createInfo.pNext = pNextChain;
 	createInfo.queueCreateInfoCount = 1;
 	createInfo.pQueueCreateInfos = &queueCreateInfo;
 	createInfo.enabledLayerCount = (uint32_t)validationLayers.size();
@@ -363,7 +392,16 @@ Buffer RenderDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, V
 	return { buffer, memory };
 }
 
-void RenderDevice::destroyBuffer(Buffer buffer) const
+VkDeviceAddress RenderDevice::getBufferAddress(VkBuffer buffer) const
+{
+	VkBufferDeviceAddressInfo addressInfo = {};
+	addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+	addressInfo.buffer = buffer;
+
+	return vkGetBufferDeviceAddress(m_device, &addressInfo);;
+}
+
+void RenderDevice::destroyBuffer(Buffer& buffer) const
 {
 	if (buffer.buffer != VK_NULL_HANDLE)
 	{

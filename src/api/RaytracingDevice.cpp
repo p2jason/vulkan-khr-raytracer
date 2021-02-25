@@ -1,0 +1,326 @@
+#include "RaytracingDevice.h"
+
+#include <algorithm>
+#include <iostream>
+
+RaytracingDevice::~RaytracingDevice()
+{
+
+}
+
+RaytracingDeviceFeatures* RaytracingDevice::init(RenderDevice* renderDevice)
+{
+	std::cout << "Initializing raytracing device" << std::endl;
+
+	//Extract feature/property information
+	m_physicalDeviceFeatures = {};
+
+	m_descriptorIndexingFeatures = {};
+	m_descriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+
+	m_accelStructFeatures = {};
+	m_accelStructFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+	m_accelStructFeatures.pNext = &m_descriptorIndexingFeatures;
+
+	m_rtPipelineFeatures = {};
+	m_rtPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+	m_rtPipelineFeatures.pNext = &m_accelStructFeatures;
+
+	m_physicalDeviceProperties = {};
+
+	m_accelStructProperties = {};
+	m_accelStructProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+
+	m_rtPipelineProperties = {};
+	m_rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+	m_rtPipelineProperties.pNext = &m_accelStructProperties;
+
+	renderDevice->getPhysicalDeviceFeatures(&m_physicalDeviceFeatures, &m_rtPipelineFeatures);
+	renderDevice->getPhysicalDevicePropertes(&m_physicalDeviceProperties, &m_rtPipelineProperties);
+
+	//Check features
+	if (!m_accelStructFeatures.accelerationStructure || !m_accelStructFeatures.descriptorBindingAccelerationStructureUpdateAfterBind)
+	{
+		std::cout << "Required acceleration structure features not suported" << std::endl;
+		PAUSE_AND_EXIT(-1);
+	}
+
+	//Create feature struct
+	RaytracingDeviceFeatures* features = new RaytracingDeviceFeatures();
+
+	features->accelStructFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR, nullptr, VK_TRUE, VK_FALSE, VK_FALSE, VK_FALSE, VK_TRUE };
+	features->rtPipelineFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR, &features->accelStructFeatures, VK_TRUE, VK_FALSE, VK_FALSE, VK_FALSE, VK_FALSE };
+	features->bufferAddress = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT, &features->rtPipelineFeatures, VK_TRUE, VK_FALSE, VK_FALSE };
+
+	features->descriptorIndexing = {};
+	features->descriptorIndexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+	features->descriptorIndexing.pNext = &features->bufferAddress;
+	features->descriptorIndexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	features->descriptorIndexing.runtimeDescriptorArray = VK_TRUE;
+	features->descriptorIndexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+	features->descriptorIndexing.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
+
+	features->pNext = &features->descriptorIndexing;
+
+	m_renderDevice = renderDevice;
+
+	return features;
+}
+
+std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, VkDeviceOrHostAddressConstKHR transformData) const
+{
+	VkDeviceAddress vertexAddress = m_renderDevice->getBufferAddress(vertexBuffer.buffer);
+	VkDeviceAddress indexAddress = m_renderDevice->getBufferAddress(indexBuffer.buffer);
+
+	VkAccelerationStructureGeometryKHR geometry = {};
+	geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+	geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+	geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+	geometry.geometry.triangles.vertexData.deviceAddress = vertexAddress;
+	geometry.geometry.triangles.vertexStride = vertexSize;
+	geometry.geometry.triangles.maxVertex = maxVertex;
+	geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+	geometry.geometry.triangles.indexData.deviceAddress = indexAddress;
+	geometry.geometry.triangles.transformData = transformData;
+	geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+
+	VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
+	rangeInfo.firstVertex = 0;
+	rangeInfo.primitiveCount = maxVertex;
+	rangeInfo.primitiveOffset = 0;
+	rangeInfo.transformOffset = 0;
+
+	std::shared_ptr<BLASGeometryInfo> geometryInfo = std::make_shared<BLASGeometryInfo>();
+
+	geometryInfo->geometryArray.push_back(geometry);
+	geometryInfo->rangeInfoArray.push_back(rangeInfo);
+
+	return geometryInfo;
+}
+
+void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
+{
+	std::cout << "Building BLAS list (" << blasList.size() << "): ";
+	std::cout << "Preparing... ";
+
+	//Allocate scratch memory
+	VkDeviceSize scratchSize = 0;
+
+	for (size_t i = 0; i < blasList.size(); ++i)
+	{
+		scratchSize = std::max(blasList[i].getSizeInfo().buildScratchSize, scratchSize);
+	}
+
+	Buffer scratchMemory = m_renderDevice->createBuffer(scratchSize, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	VkDeviceAddress scratchAddress = m_renderDevice->getBufferAddress(scratchMemory.buffer);
+
+	//Create query pool to store acceleration structure properties
+	VkQueryPoolCreateInfo queryPoolCreateInfo = {};
+	queryPoolCreateInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	queryPoolCreateInfo.queryCount = (uint32_t)blasList.size();
+	queryPoolCreateInfo.queryType = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
+
+	VkQueryPool queryPool;
+	VK_CHECK(vkCreateQueryPool(m_renderDevice->getDevice(), &queryPoolCreateInfo, nullptr, &queryPool));
+
+	//Create fence to use for waiting on queue submissions
+	VkFenceCreateInfo fenceCreateInfo = {};
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	VkFence buildCompleteFence;
+	VK_CHECK(vkCreateFence(m_renderDevice->getDevice(), &fenceCreateInfo, nullptr, &buildCompleteFence));
+
+	//Allocate command buffers
+	VkCommandPool commandPool = m_renderDevice->createCommandPool(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+
+	std::cout << "Building... ";
+
+	//Create a single buffer for each BLAS to prevent the driver from getting stuck
+	//if the workload is too load
+	std::vector<VkCommandBuffer> blasBuffers(blasList.size());
+
+	VkCommandBufferAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = commandPool;
+	allocInfo.commandBufferCount = (uint32_t)blasBuffers.size();
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	VK_CHECK(vkAllocateCommandBuffers(m_renderDevice->getDevice(), &allocInfo, blasBuffers.data()));
+
+	for (int i = 0; i < (int)blasList.size(); ++i)
+	{
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		
+		VK_CHECK(vkBeginCommandBuffer(blasBuffers[i], &beginInfo));
+
+		VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].getBuildInfo();
+		buildInfo.scratchData.deviceAddress = scratchAddress;
+	
+		std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> ppBuildRangeInfos(blasList[i].getGeometryInfo()->rangeInfoArray.size());
+		std::transform(blasList[i].getGeometryInfo()->rangeInfoArray.cbegin(), blasList[i].getGeometryInfo()->rangeInfoArray.cend(), ppBuildRangeInfos.begin(), [](VkAccelerationStructureBuildRangeInfoKHR range) { return &range; });
+
+		vkCmdBuildAccelerationStructuresKHR(blasBuffers[i], 1, &buildInfo, ppBuildRangeInfos.data());
+
+		//Since all acceleration structures use the same scratch memory,
+		//a barrier is need to prevent it from being used concurrently
+		VkMemoryBarrier barrier = {};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+		barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+
+		vkCmdPipelineBarrier(blasBuffers[i],
+							 VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+							 VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+							 0, 1, &barrier, 0, nullptr, 0, nullptr);
+
+		if ((buildInfo.flags | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR) == VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
+		{
+			VkAccelerationStructureKHR accelStruct = blasList[i].get();
+
+			vkCmdWriteAccelerationStructuresPropertiesKHR(blasBuffers[i], 1, &accelStruct, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, queryPool, i);
+		}
+
+		VK_CHECK(vkEndCommandBuffer(blasBuffers[i]));
+	}
+
+	//Submit command buffers to build acceleration structures
+	m_renderDevice->submit(blasBuffers, {}, {}, buildCompleteFence);
+
+	VK_CHECK(vkWaitForFences(m_renderDevice->getDevice(), 1, &buildCompleteFence, VK_TRUE, UINT64_MAX));
+
+	//Created compact acceleration structures
+	VK_CHECK(vkResetCommandPool(m_renderDevice->getDevice(), commandPool, 0));
+
+	std::cout << "Compacting... ";
+
+	std::vector<BottomLevelAS> oldBLASes = blasList;
+
+	VkDeviceSize totalOriginalSize = 0;
+	VkDeviceSize totalCompactSize = 0;
+
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	VK_CHECK(vkBeginCommandBuffer(blasBuffers[0], &beginInfo));
+
+	for (int i = 0; i < (int)blasList.size(); ++i)
+	{
+		VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].getBuildInfo();
+
+		if ((buildInfo.flags | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR) != VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
+		{
+			continue;
+		}
+
+		VkDeviceSize compactedSize;
+		VK_CHECK(vkGetQueryPoolResults(m_renderDevice->getDevice(), queryPool, i, 1, sizeof(VkDeviceSize), &compactedSize, sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT));
+		
+		blasList[i].m_accelStorageBuffer = m_renderDevice->createBuffer(compactedSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+																					   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+		VkAccelerationStructureCreateInfoKHR createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+		createInfo.buffer = blasList[i].m_accelStorageBuffer.buffer;
+		createInfo.offset = 0;
+		createInfo.size = compactedSize;
+		createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		
+		VK_CHECK(vkCreateAccelerationStructureKHR(m_renderDevice->getDevice(), &createInfo, nullptr, &blasList[i].m_accelerationStructure));
+
+		VkCopyAccelerationStructureInfoKHR copyInfo = {};
+		copyInfo.sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR;
+		copyInfo.src = oldBLASes[i].m_accelerationStructure;
+		copyInfo.dst = blasList[i].m_accelerationStructure;
+		copyInfo.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
+		
+		vkCmdCopyAccelerationStructureKHR(blasBuffers[0], &copyInfo);
+
+		//Update structure size info
+		totalOriginalSize += blasList[i].getSizeInfo().accelerationStructureSize;
+		totalCompactSize += compactedSize;
+
+		blasList[i].m_geometryInfo = nullptr;
+	}
+
+	VK_CHECK(vkEndCommandBuffer(blasBuffers[0]));
+
+	m_renderDevice->submit({ blasBuffers[0] }, {}, {}, buildCompleteFence);
+
+	VK_CHECK(vkWaitForFences(m_renderDevice->getDevice(), 1, &buildCompleteFence, VK_TRUE, UINT64_MAX));
+
+	std::cout << "Finished!" << std::endl;
+	std::cout << "Total original size: " << (totalOriginalSize / 1024.0f) << "KB, total compact size: " << (totalCompactSize / 1024.0f) << ", compaction ratio: " << (float)((100.0 * totalCompactSize) / totalOriginalSize) << "%" << std::endl;;
+
+	//Destroy resources
+	for (int i = 0; i < (int)blasList.size(); ++i)
+	{
+		oldBLASes[i].destroy();
+	}
+
+	vkDestroyFence(m_renderDevice->getDevice(), buildCompleteFence, nullptr);
+	vkDestroyQueryPool(m_renderDevice->getDevice(), queryPool, nullptr);
+	vkDestroyCommandPool(m_renderDevice->getDevice(), commandPool, nullptr);
+}
+
+std::vector<const char*> RaytracingDevice::getRequiredExtensions() const
+{
+	return {
+		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+		VK_KHR_MAINTENANCE3_EXTENSION_NAME,
+		VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+		VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+	};
+}
+
+void BottomLevelAS::init(const RaytracingDevice* device, std::shared_ptr<const BLASGeometryInfo> geometryInfo, VkBuildAccelerationStructureFlagBitsKHR flags)
+{
+	m_buildInfo = {};
+	m_buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	m_buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	m_buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	m_buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+	m_buildInfo.dstAccelerationStructure = VK_NULL_HANDLE;
+	m_buildInfo.geometryCount = (uint32_t)geometryInfo->geometryArray.size();
+	m_buildInfo.pGeometries = geometryInfo->geometryArray.data();
+	m_buildInfo.flags = flags;
+
+	//Query acceleration structure size
+	std::vector<uint32_t> maxPrimitiveCount(geometryInfo->rangeInfoArray.size());
+	std::transform(geometryInfo->rangeInfoArray.cbegin(), geometryInfo->rangeInfoArray.cend(), maxPrimitiveCount.begin(), [](VkAccelerationStructureBuildRangeInfoKHR range) { return range.primitiveCount; });
+
+	m_sizeInfo = {};
+	m_sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+
+	vkGetAccelerationStructureBuildSizesKHR(device->getRenderDevice()->getDevice(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &m_buildInfo, maxPrimitiveCount.data(), &m_sizeInfo);
+
+	//Allocate acceleration structure buffer
+	m_accelStorageBuffer = device->getRenderDevice()->createBuffer(m_sizeInfo.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	//Create acceleration structure
+	VkAccelerationStructureCreateInfoKHR createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+	createInfo.buffer = m_accelStorageBuffer.buffer;
+	createInfo.offset = 0;
+	createInfo.size = m_sizeInfo.accelerationStructureSize;
+	createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+	VK_CHECK(vkCreateAccelerationStructureKHR(device->getRenderDevice()->getDevice(), &createInfo, nullptr, &m_accelerationStructure));
+
+	m_buildInfo.dstAccelerationStructure = m_accelerationStructure;
+	m_geometryInfo = geometryInfo;
+}
+
+void BottomLevelAS::destroy()
+{
+	if (m_accelerationStructure != VK_NULL_HANDLE)
+	{
+		vkDestroyAccelerationStructureKHR(m_device->getRenderDevice()->getDevice(), m_accelerationStructure, nullptr);
+	}
+
+	m_device->getRenderDevice()->destroyBuffer(m_accelStorageBuffer);
+}
+

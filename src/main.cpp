@@ -3,10 +3,11 @@
 #include <chrono>
 
 #include <volk.h>
+#include <vulkan/vulkan.hpp>
 
 #include "api/Window.h"
 #include "api/RenderDevice.h"
-
+#include "api/RaytracingDevice.h"
 #include "api/Swapchain.h"
 
 #include <glm/glm.hpp>
@@ -55,22 +56,33 @@ int main()
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions = window.getRequiredExtensions(glfwExtensionCount);
 
-	std::vector<const char*> extensions = swapchainFactory.determineInstanceExtensions();
-	extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
+	std::vector<const char*> instanceExtensions = swapchainFactory.determineInstanceExtensions();
+	instanceExtensions.insert(instanceExtensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
 
 	std::vector<const char*> validationLayers({ "VK_LAYER_KHRONOS_validation" });//"VK_LAYER_LUNARG_standard_validation"
 
 	glm::ivec2 viewportSize = window.getViewportSize();
 
+	RaytracingDevice raytracingDevice;
+
+	std::vector<const char*> deviceExtensions = raytracingDevice.getRequiredExtensions();
+	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
 	RenderDevice renderDevice;
-	renderDevice.createInstance(extensions, validationLayers, true);
+	renderDevice.createInstance(instanceExtensions, validationLayers, true);
 	renderDevice.createSurface(window);
 	renderDevice.choosePhysicalDevice();
-
-	std::vector<const char*> deviceExtensions = swapchainFactory.determineDeviceExtensions(renderDevice.getPhysicalDevice());
-
 	renderDevice.createLogicalDevice(deviceExtensions, validationLayers);
-	
+
+	RaytracingDeviceFeatures* features = raytracingDevice.init(&renderDevice);
+
+	std::vector<const char*> swapchainExtensions = swapchainFactory.determineDeviceExtensions(renderDevice.getPhysicalDevice());
+	deviceExtensions.insert(deviceExtensions.end(), swapchainExtensions.begin(), swapchainExtensions.end());
+
+	renderDevice.createLogicalDevice(deviceExtensions, validationLayers, features->pNext);
+
+	delete features;
+
 	SurfaceProfile profile = swapchainFactory.createProfileForSurface(renderDevice.getPhysicalDevice(), renderDevice.getSurface(), {}, FullScreenExclusiveMode::DEFAULT, nullptr);
 	Swapchain swapchain = swapchainFactory.createSwapchain(renderDevice.getDevice(), renderDevice.getSurface(), profile, viewportSize.x, viewportSize.y);
 
@@ -209,6 +221,9 @@ int main()
 		VK_CHECK(vkWaitForFences(device, 1, &renderFinishedFence, VK_TRUE, UINT64_MAX));
 		VK_CHECK(vkResetFences(device, 1, &renderFinishedFence));
 		VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(1ms);
 	}
 
 	destroyFramebuffers(device, framebuffers);
