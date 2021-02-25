@@ -73,6 +73,14 @@ target_include_directories(glfw PUBLIC ${GLFW_ROOT}/include)
 
 target_link_libraries(glfw Vulkan-Headers)
 
+# Setup ASSIMP
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "Turn off ASSIMP tests.")
+set(ASSIMP_INSTALL OFF CACHE BOOL "Do not install ASSIMP")
+set(ASSIMP_BUILD_DRACO OFF CACHE BOOL "Do not install ASSIMP")
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "Do not build ASSIMP tools")
+
+add_subdirectory(third_party/assimp)
+
 # Setup sources
 file(GLOB_RECURSE SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.h" "${PROJECT_SOURCE_DIR}/src/*.cpp")
 
@@ -84,6 +92,7 @@ target_link_libraries(${PROJECT_NAME} Vulkan-Headers)
 target_link_libraries(${PROJECT_NAME} glfw)
 target_link_libraries(${PROJECT_NAME} glm)
 target_link_libraries(${PROJECT_NAME} volk)
+target_link_libraries(${PROJECT_NAME} assimp::assimp)
 
 # Setup IDE filters
 macro(ConvertToFilters curdir)
