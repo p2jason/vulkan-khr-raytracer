@@ -21,6 +21,9 @@ struct BLASGeometryInfo
 	std::vector<VkAccelerationStructureBuildRangeInfoKHR> rangeInfoArray;
 };
 
+class BottomLevelAS;
+class TopLevelAS;
+
 class RaytracingDevice
 {
 private:
@@ -41,7 +44,10 @@ public:
 	RaytracingDeviceFeatures* init(RenderDevice* renderDevice);
 
 	std::shared_ptr<const BLASGeometryInfo> compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, VkDeviceOrHostAddressConstKHR transformData) const;
+	VkAccelerationStructureInstanceKHR compileInstances(const BottomLevelAS& blas, glm::mat4 transform, uint32_t instanceCustomIndex, uint32_t mask, uint32_t instanceShaderBindingTableRecordOffset, VkGeometryInstanceFlagsKHR flags) const;
+
 	void buildBLAS(std::vector<BottomLevelAS>& blasList) const;
+	void buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerationStructureInstanceKHR>& instances, VkBuildAccelerationStructureFlagsKHR flags) const;
 
 	std::vector<const char*> getRequiredExtensions() const;
 
@@ -73,3 +79,14 @@ public:
 	friend class RaytracingDevice;
 };
 
+class TopLevelAS
+{
+private:
+	VkAccelerationStructureKHR m_accelerationStructure;
+	Buffer m_accelStorageBuffer;
+public:
+	void init(const RaytracingDevice* device);
+	void destroy();
+
+	friend class RaytracingDevice;
+};
