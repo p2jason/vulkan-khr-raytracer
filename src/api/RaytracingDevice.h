@@ -11,12 +11,16 @@ struct RaytracingDeviceFeatures
 	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures = {};
 	VkPhysicalDeviceBufferAddressFeaturesEXT bufferAddress = {};
 	VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexing = {};
+	VkPhysicalDeviceHostQueryResetFeatures hostQueryReset = {};
 
 	void* pNext = nullptr;
 };
 
 struct BLASGeometryInfo
 {
+	Buffer vertexBuffer;
+	Buffer indexBuffer;
+
 	std::vector<VkAccelerationStructureGeometryKHR> geometryArray;
 	std::vector<VkAccelerationStructureBuildRangeInfoKHR> rangeInfoArray;
 };
@@ -65,9 +69,9 @@ private:
 
 	std::shared_ptr<const BLASGeometryInfo> m_geometryInfo = nullptr;
 
-	RaytracingDevice* m_device = nullptr;
+	const RaytracingDevice* m_device = nullptr;
 public:
-	void init(const RaytracingDevice* device, std::shared_ptr<const BLASGeometryInfo> geometryInfo, VkBuildAccelerationStructureFlagBitsKHR flags);
+	void init(const RaytracingDevice* device, std::shared_ptr<const BLASGeometryInfo> geometryInfo, VkBuildAccelerationStructureFlagsKHR flags);
 	void destroy();
 
 	inline VkAccelerationStructureKHR get() const { return m_accelerationStructure; }

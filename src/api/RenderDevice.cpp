@@ -134,6 +134,7 @@ void RenderDevice::createInstance(std::vector<const char*> extensions, std::vect
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
 	debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	debugCreateInfo.pNext = nullptr;
 	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	debugCreateInfo.pfnUserCallback = debugCallback;
@@ -151,6 +152,19 @@ void RenderDevice::createInstance(std::vector<const char*> extensions, std::vect
 	VK_CHECK(vkCreateInstance(&createInfo, nullptr, &m_instance));
 
 	volkLoadInstance(m_instance);
+
+	if (enableDebugMessenger)
+	{
+		debugCreateInfo = {};
+		debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+		debugCreateInfo.pNext = nullptr;
+		debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		debugCreateInfo.pfnUserCallback = debugCallback;
+		debugCreateInfo.pUserData = nullptr;
+
+		VK_CHECK(vkCreateDebugUtilsMessengerEXT(m_instance, &debugCreateInfo, nullptr, &m_debugMessenger));
+	}
 }
 
 void RenderDevice::createSurface(const Window& window)
@@ -218,7 +232,7 @@ void RenderDevice::getPhysicalDevicePropertes(VkPhysicalDeviceProperties* proper
 	}
 }
 
-void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain)
+void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain, VkPhysicalDeviceFeatures* pFeatures)
 {
 	//Check extension support
 	uint32_t extensionCount = 0;
@@ -318,13 +332,16 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 	createInfo.ppEnabledLayerNames = validationLayers.data();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.size();
 	createInfo.ppEnabledExtensionNames = extensions.data();
-	createInfo.pEnabledFeatures = nullptr;
+	createInfo.pEnabledFeatures = pFeatures;
 
 	VK_CHECK(vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device));
 
 	volkLoadDevice(m_device);
 
 	vkGetDeviceQueue(m_device, m_queueFamilyIndex, 0, &m_queue);
+
+	//Create transient command pool
+	m_transientPool = createCommandPool(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 }
 
 VkCommandPool RenderDevice::createCommandPool(VkCommandPoolCreateFlags flags) const
@@ -401,7 +418,7 @@ VkDeviceAddress RenderDevice::getBufferAddress(VkBuffer buffer) const
 	return vkGetBufferDeviceAddress(m_device, &addressInfo);;
 }
 
-void RenderDevice::destroyBuffer(Buffer& buffer) const
+void RenderDevice::destroyBuffer(const Buffer& buffer) const
 {
 	if (buffer.buffer != VK_NULL_HANDLE)
 	{
@@ -414,8 +431,59 @@ void RenderDevice::destroyBuffer(Buffer& buffer) const
 	}
 }
 
+void RenderDevice::executeCommands(int bufferCount, const std::function<void(VkCommandBuffer*)>& func) const
+{
+	//Create fence
+	VkFenceCreateInfo fenceCreateInfo = {};
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	VkFence buildCompleteFence;
+	VK_CHECK(vkCreateFence(m_device, &fenceCreateInfo, nullptr, &buildCompleteFence));
+
+	//Allocate command buffers
+	VkCommandBufferAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = m_transientPool;
+	allocInfo.commandBufferCount = bufferCount;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	std::vector<VkCommandBuffer> commandBuffers(bufferCount);
+	VK_CHECK(vkAllocateCommandBuffers(m_device, &allocInfo, commandBuffers.data()));
+
+	//Record command buffers
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	for (int i = 0; i < bufferCount; ++i)
+	{
+		VK_CHECK(vkBeginCommandBuffer(commandBuffers[i], &beginInfo));
+	}
+
+	func(commandBuffers.data());
+
+	for (int i = 0; i < bufferCount; ++i)
+	{
+		VK_CHECK(vkEndCommandBuffer(commandBuffers[i]));
+	}
+
+	//Submit comamnd buffers
+	submit(commandBuffers, {}, {}, buildCompleteFence);
+
+	VK_CHECK(vkWaitForFences(m_device, 1, &buildCompleteFence, VK_TRUE, UINT64_MAX));
+
+	//Free resources
+	vkFreeCommandBuffers(m_device, m_transientPool, (uint32_t)commandBuffers.size(), commandBuffers.data());
+
+	vkDestroyFence(m_device, buildCompleteFence, nullptr);
+}
+
 void RenderDevice::destroy()
 {
+	if (m_transientPool != VK_NULL_HANDLE)
+	{
+		vkDestroyCommandPool(m_device, m_transientPool, nullptr);
+	}
+
 	if (m_device != VK_NULL_HANDLE)
 	{
 		vkDestroyDevice(m_device, nullptr);
@@ -424,6 +492,11 @@ void RenderDevice::destroy()
 	if (m_surface != VK_NULL_HANDLE)
 	{
 		vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
+	}
+
+	if (m_debugMessenger != VK_NULL_HANDLE)
+	{
+		vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
 	}
 
 	if (m_instance != VK_NULL_HANDLE)

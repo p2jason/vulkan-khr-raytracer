@@ -10,6 +10,8 @@
 #include "api/RaytracingDevice.h"
 #include "api/Swapchain.h"
 
+#include "SceneLoader.h"
+
 #include <glm/glm.hpp>
 
 std::vector<VkFramebuffer> createFramebuffers(VkDevice device, int width, int height, const std::vector<VkImageView>& imageViews, VkRenderPass renderPass)
@@ -72,7 +74,6 @@ int main()
 	renderDevice.createInstance(instanceExtensions, validationLayers, true);
 	renderDevice.createSurface(window);
 	renderDevice.choosePhysicalDevice();
-	renderDevice.createLogicalDevice(deviceExtensions, validationLayers);
 
 	RaytracingDeviceFeatures* features = raytracingDevice.init(&renderDevice);
 
@@ -167,6 +168,8 @@ int main()
 
 	std::vector<VkFramebuffer> framebuffers = createFramebuffers(device, viewportSize.x, viewportSize.y, swapchain.getImageViews(), renderPass);
 
+	SceneRepresentation scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkey.glb");
+
 	while (!window.isCloseRequested())
 	{
 		window.pollEvents();
@@ -225,6 +228,8 @@ int main()
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(1ms);
 	}
+
+	scene.destroy();
 
 	destroyFramebuffers(device, framebuffers);
 	vkDestroyRenderPass(device, renderPass, nullptr);

@@ -5,6 +5,11 @@ project(VulkanKHRRaytracer)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Set build output directories
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
 # Setup Vulkan-Headers
 set(VK_HEADERS_INCLUDE "${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include")
 
@@ -14,7 +19,7 @@ target_include_directories(Vulkan-Headers INTERFACE ${VK_HEADERS_INCLUDE})
 # Setup VOLK
 set(VOLK_ROOT "${PROJECT_SOURCE_DIR}/third_party/volk")
 
-add_library(volk ${VOLK_ROOT}/volk.h ${VOLK_ROOT}/volk.c)
+add_library(volk STATIC ${VOLK_ROOT}/volk.h ${VOLK_ROOT}/volk.c)
 target_include_directories(volk PUBLIC ${VOLK_ROOT}/)
 
 target_link_libraries(volk Vulkan-Headers)
@@ -68,7 +73,7 @@ set(GLFW_SOURCES ${GLFW_ROOT}/src/glfw_config.h
 				 ${GLFW_ROOT}/src/window.c
 				 ${GLFW_PLATFORM_SOURCES})
 
-add_library(glfw ${GLFW_SOURCES})
+add_library(glfw STATIC ${GLFW_SOURCES})
 target_include_directories(glfw PUBLIC ${GLFW_ROOT}/include)
 
 target_link_libraries(glfw Vulkan-Headers)
@@ -110,3 +115,10 @@ endmacro()
 
 ConvertToFilters(src)
 ConvertToFilters(data)
+
+if(WIN32)
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+					   COMMAND ${CMAKE_COMMAND} -E copy_directory
+					   $<TARGET_FILE_DIR:assimp>
+					   $<TARGET_FILE_DIR:${PROJECT_NAME}>)
+endif()

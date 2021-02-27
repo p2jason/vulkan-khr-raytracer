@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <iostream>
+#include <functional>
 
 #include <volk.h>
 
@@ -78,6 +79,7 @@ class RenderDevice
 private:
 	VkInstance m_instance = VK_NULL_HANDLE;
 	VkSurfaceKHR m_surface = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 
 	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
 	VkPhysicalDeviceMemoryProperties m_memProperties;
@@ -85,6 +87,7 @@ private:
 
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkQueue m_queue = VK_NULL_HANDLE;
+	VkCommandPool m_transientPool = VK_NULL_HANDLE;
 public:
 	RenderDevice() {}
 
@@ -93,14 +96,16 @@ public:
 	void choosePhysicalDevice();
 	void getPhysicalDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNextChain) const;
 	void getPhysicalDevicePropertes(VkPhysicalDeviceProperties* properties, void* pNextChain) const;
-	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain = nullptr);
+	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain = nullptr, VkPhysicalDeviceFeatures* pFeatures = nullptr);
 
 	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
 	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
 
 	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
 	VkDeviceAddress getBufferAddress(VkBuffer buffer) const;
-	void destroyBuffer(Buffer& buffer) const;
+	void destroyBuffer(const Buffer& buffer) const;
+
+	void executeCommands(int bufferCount, const std::function<void(VkCommandBuffer*)>& func) const;
 
 	void destroy();
 
