@@ -5,6 +5,8 @@
 #include <volk.h>
 #include <vulkan/vulkan.hpp>
 
+#include <glm/gtx/transform.hpp>
+
 #include "api/Window.h"
 #include "api/RenderDevice.h"
 #include "api/RaytracingDevice.h"

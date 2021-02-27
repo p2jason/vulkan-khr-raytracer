@@ -289,6 +289,7 @@ void RaytracingDevice::buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerat
 	topASGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
 	topASGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
 	topASGeometry.geometry.instances = {};
+	topASGeometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
 	topASGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
 	topASGeometry.geometry.instances.data.deviceAddress = instanceAddress;
 
@@ -350,6 +351,7 @@ void RaytracingDevice::buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerat
 	});
 
 	std::cout << "Finished!" << std::endl;
+	std::cout << "    -Child instances: " << instances.size() << std::endl;
 
 	m_renderDevice->destroyBuffer(instanceBuffer);
 	m_renderDevice->destroyBuffer(scratchBuffer);
@@ -418,10 +420,15 @@ void BottomLevelAS::destroy()
 
 void TopLevelAS::init(const RaytracingDevice* device)
 {
-
+	m_device = device;
 }
 
 void TopLevelAS::destroy()
 {
+	if (m_accelerationStructure != VK_NULL_HANDLE)
+	{
+		vkDestroyAccelerationStructureKHR(m_device->getRenderDevice()->getDevice(), m_accelerationStructure, nullptr);
+	}
 
+	m_device->getRenderDevice()->destroyBuffer(m_accelStorageBuffer);
 }

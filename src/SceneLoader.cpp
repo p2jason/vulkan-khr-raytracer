@@ -4,23 +4,38 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
+#include <glm/gtx/transform.hpp>
+
 #include <vector>
 #include <chrono>
 
-SceneRepresentation SceneLoader::loadScene(const RaytracingDevice* device, const char* scenePath)
+void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList, aiNode* node, glm::mat4 transform)
 {
-	//Import scene from file
-	std::cout << "Importing scene " << scenePath << "... ";
+	glm::mat4 nodeTransform = {
+		{ node->mTransformation.a1, node->mTransformation.a2, node->mTransformation.a3, node->mTransformation.a4 },
+		{ node->mTransformation.b1, node->mTransformation.b2, node->mTransformation.b3, node->mTransformation.b4 },
+		{ node->mTransformation.c1, node->mTransformation.c2, node->mTransformation.c3, node->mTransformation.c4 },
+		{ node->mTransformation.d1, node->mTransformation.d2, node->mTransformation.d3, node->mTransformation.d4 }
+	};
 
-	auto start = std::chrono::high_resolution_clock::now();
+	transform *= nodeTransform;
 
-	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality);
+	//Add BLAS instances to TLAS
+	for (unsigned int i = 0; i < node->mNumMeshes; ++i)
+	{
+		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, 0/*gl_InstanceCustomIndexEXT*/, 0x00, 0, VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR));
+	}
 
-	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;
+	//Traverse children
+	for (unsigned int i = 0; i < node->mNumChildren; ++i)
+	{
+		parseSceneGraphNode(device, instances, blasList, node->mChildren[i], transform);
+	}
+}
 
-	//Parse scene
+void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, SceneRepresentation& representation)
+{
+	//Parse meshes
 	std::vector<BottomLevelAS> meshBLASList(scene->mNumMeshes);
 	std::vector<Buffer> stagingBuffers(scene->mNumMeshes);
 
@@ -61,10 +76,10 @@ SceneRepresentation SceneLoader::loadScene(const RaytracingDevice* device, const
 
 			//Create BLAS for mesh
 			Buffer vertexBuffer = device->getRenderDevice()->createBuffer(vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-																							VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 			Buffer indexBuffer = device->getRenderDevice()->createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-																						  VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(MeshVertex), mesh->mNumVertices, indexBuffer, { 0 });
 
@@ -88,18 +103,49 @@ SceneRepresentation SceneLoader::loadScene(const RaytracingDevice* device, const
 	}
 
 	device->buildBLAS(meshBLASList);
-		
-	importer.FreeScene();
+
+	//Parse scene graph
+	std::vector<VkAccelerationStructureInstanceKHR> accelStructInstances;
+	parseSceneGraphNode(device, accelStructInstances, meshBLASList, scene->mRootNode, glm::identity<glm::mat4>());
+
+	//Build TLAS
+	TopLevelAS tlas;
+	tlas.init(device);
+
+	device->buildTLAS(tlas, accelStructInstances, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
+
+	representation.blasList = std::move(meshBLASList);
+	representation.tlas = std::move(tlas);
+}
+
+SceneRepresentation SceneLoader::loadScene(const RaytracingDevice* device, const char* scenePath)
+{
+	//Import scene from file
+	std::cout << "Importing scene " << scenePath << "... ";
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+	Assimp::Importer importer;
+	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality);
+
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;
 
 	SceneRepresentation representation;
 	representation.device = device;
-	representation.blasList = std::move(meshBLASList);
 
+	//Load scene graph (meshes)
+	loadSceneGraph(device, scene, representation);
+
+	importer.FreeScene();
+	
 	return representation;
 };
 
 void SceneRepresentation::destroy()
 {
+	tlas.destroy();
+
 	for (BottomLevelAS& blas : blasList)
 	{
 		blas.destroy();

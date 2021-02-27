@@ -88,6 +88,8 @@ class TopLevelAS
 private:
 	VkAccelerationStructureKHR m_accelerationStructure;
 	Buffer m_accelStorageBuffer;
+
+	const RaytracingDevice* m_device = nullptr;
 public:
 	void init(const RaytracingDevice* device);
 	void destroy();
