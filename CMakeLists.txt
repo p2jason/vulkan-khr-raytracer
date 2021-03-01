@@ -86,6 +86,16 @@ set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "Do not build ASSIMP tools")
 
 add_subdirectory(third_party/assimp)
 
+# Setup glslang
+set(SKIP_GLSLANG_INSTALL OFF CACHE BOOL "")
+set(ENABLE_SPVREMAPPER OFF CACHE BOOL "")
+set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
+set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
+set(ENABLE_CTEST OFF CACHE BOOL "")
+set(ENABLE_HLSL OFF CACHE BOOL "")
+
+add_subdirectory(third_party/glslang)
+
 # Setup sources
 file(GLOB_RECURSE SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.h" "${PROJECT_SOURCE_DIR}/src/*.cpp")
 
@@ -98,6 +108,7 @@ target_link_libraries(${PROJECT_NAME} glfw)
 target_link_libraries(${PROJECT_NAME} glm)
 target_link_libraries(${PROJECT_NAME} volk)
 target_link_libraries(${PROJECT_NAME} assimp::assimp)
+target_link_libraries(${PROJECT_NAME} glslang)
 
 # Setup IDE filters
 macro(ConvertToFilters curdir)

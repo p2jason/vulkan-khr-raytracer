@@ -12,7 +12,7 @@
 #include "api/RaytracingDevice.h"
 #include "api/Swapchain.h"
 
-#include "SceneLoader.h"
+#include "scene/SceneLoader.h"
 
 #include <glm/glm.hpp>
 
@@ -169,7 +169,7 @@ int main()
 	}
 
 	std::vector<VkFramebuffer> framebuffers = createFramebuffers(device, viewportSize.x, viewportSize.y, swapchain.getImageViews(), renderPass);
-
+	
 	SceneRepresentation scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkey.glb");
 
 	while (!window.isCloseRequested())

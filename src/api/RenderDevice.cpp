@@ -3,6 +3,129 @@
 #include <iostream>
 #include <algorithm>
 
+#include <glslang/Public/ShaderLang.h>
+#include <SPIRV/GlslangToSpv.h>
+#include <SPIRV/Logger.h>
+
+class BeginTerminateHook
+{
+public:
+	BeginTerminateHook() { glslang::InitializeProcess(); }
+	~BeginTerminateHook() { glslang::FinalizeProcess(); }
+};
+
+BeginTerminateHook s_beginTerminateHook;
+
+const TBuiltInResource DefaultTBuiltInResource =
+{
+	/* .maxLights = */ 32,
+	/* .maxClipPlanes = */ 6,
+	/* .maxTextureUnits = */ 32,
+	/* .maxTextureCoords = */ 32,
+	/* .maxVertexAttribs = */ 64,
+	/* .maxVertexUniformComponents = */ 4096,
+	/* .maxVaryingFloats = */ 64,
+	/* .maxVertexTextureImageUnits = */ 32,
+	/* .maxCombinedTextureImageUnits = */ 80,
+	/* .maxTextureImageUnits = */ 32,
+	/* .maxFragmentUniformComponents = */ 4096,
+	/* .maxDrawBuffers = */ 32,
+	/* .maxVertexUniformVectors = */ 128,
+	/* .maxVaryingVectors = */ 8,
+	/* .maxFragmentUniformVectors = */ 16,
+	/* .maxVertexOutputVectors = */ 16,
+	/* .maxFragmentInputVectors = */ 15,
+	/* .minProgramTexelOffset = */ -8,
+	/* .maxProgramTexelOffset = */ 7,
+	/* .maxClipDistances = */ 8,
+	/* .maxComputeWorkGroupCountX = */ 65535,
+	/* .maxComputeWorkGroupCountY = */ 65535,
+	/* .maxComputeWorkGroupCountZ = */ 65535,
+	/* .maxComputeWorkGroupSizeX = */ 1024,
+	/* .maxComputeWorkGroupSizeY = */ 1024,
+	/* .maxComputeWorkGroupSizeZ = */ 64,
+	/* .maxComputeUniformComponents = */ 1024,
+	/* .maxComputeTextureImageUnits = */ 16,
+	/* .maxComputeImageUniforms = */ 8,
+	/* .maxComputeAtomicCounters = */ 8,
+	/* .maxComputeAtomicCounterBuffers = */ 1,
+	/* .maxVaryingComponents = */ 60,
+	/* .maxVertexOutputComponents = */ 64,
+	/* .maxGeometryInputComponents = */ 64,
+	/* .maxGeometryOutputComponents = */ 128,
+	/* .maxFragmentInputComponents = */ 128,
+	/* .maxImageUnits = */ 8,
+	/* .maxCombinedImageUnitsAndFragmentOutputs = */ 8,
+	/* .maxCombinedShaderOutputResources = */ 8,
+	/* .maxImageSamples = */ 0,
+	/* .maxVertexImageUniforms = */ 0,
+	/* .maxTessControlImageUniforms = */ 0,
+	/* .maxTessEvaluationImageUniforms = */ 0,
+	/* .maxGeometryImageUniforms = */ 0,
+	/* .maxFragmentImageUniforms = */ 8,
+	/* .maxCombinedImageUniforms = */ 8,
+	/* .maxGeometryTextureImageUnits = */ 16,
+	/* .maxGeometryOutputVertices = */ 256,
+	/* .maxGeometryTotalOutputComponents = */ 1024,
+	/* .maxGeometryUniformComponents = */ 1024,
+	/* .maxGeometryVaryingComponents = */ 64,
+	/* .maxTessControlInputComponents = */ 128,
+	/* .maxTessControlOutputComponents = */ 128,
+	/* .maxTessControlTextureImageUnits = */ 16,
+	/* .maxTessControlUniformComponents = */ 1024,
+	/* .maxTessControlTotalOutputComponents = */ 4096,
+	/* .maxTessEvaluationInputComponents = */ 128,
+	/* .maxTessEvaluationOutputComponents = */ 128,
+	/* .maxTessEvaluationTextureImageUnits = */ 16,
+	/* .maxTessEvaluationUniformComponents = */ 1024,
+	/* .maxTessPatchComponents = */ 120,
+	/* .maxPatchVertices = */ 32,
+	/* .maxTessGenLevel = */ 64,
+	/* .maxViewports = */ 16,
+	/* .maxVertexAtomicCounters = */ 0,
+	/* .maxTessControlAtomicCounters = */ 0,
+	/* .maxTessEvaluationAtomicCounters = */ 0,
+	/* .maxGeometryAtomicCounters = */ 0,
+	/* .maxFragmentAtomicCounters = */ 8,
+	/* .maxCombinedAtomicCounters = */ 8,
+	/* .maxAtomicCounterBindings = */ 1,
+	/* .maxVertexAtomicCounterBuffers = */ 0,
+	/* .maxTessControlAtomicCounterBuffers = */ 0,
+	/* .maxTessEvaluationAtomicCounterBuffers = */ 0,
+	/* .maxGeometryAtomicCounterBuffers = */ 0,
+	/* .maxFragmentAtomicCounterBuffers = */ 1,
+	/* .maxCombinedAtomicCounterBuffers = */ 1,
+	/* .maxAtomicCounterBufferSize = */ 16384,
+	/* .maxTransformFeedbackBuffers = */ 4,
+	/* .maxTransformFeedbackInterleavedComponents = */ 64,
+	/* .maxCullDistances = */ 8,
+	/* .maxCombinedClipAndCullDistances = */ 8,
+	/* .maxSamples = */ 4,
+	/* .maxMeshOutputVerticesNV = */ 256,
+	/* .maxMeshOutputPrimitivesNV = */ 512,
+	/* .maxMeshWorkGroupSizeX_NV = */ 32,
+	/* .maxMeshWorkGroupSizeY_NV = */ 1,
+	/* .maxMeshWorkGroupSizeZ_NV = */ 1,
+	/* .maxTaskWorkGroupSizeX_NV = */ 32,
+	/* .maxTaskWorkGroupSizeY_NV = */ 1,
+	/* .maxTaskWorkGroupSizeZ_NV = */ 1,
+	/* .maxMeshViewCountNV = */ 4,
+	/* .maxDualSourceDrawBuffersEXT = */ 1,
+
+	/* .limits = */
+	{
+		/* .nonInductiveForLoops = */ true,
+		/* .whileLoops = */ true,
+		/* .doWhileLoops = */ true,
+		/* .generalUniformIndexing = */ true,
+		/* .generalAttributeMatrixVectorIndexing = */ true,
+		/* .generalVaryingIndexing = */ true,
+		/* .generalSamplerIndexing = */ true,
+		/* .generalVariableIndexing = */ true,
+		/* .generalConstantMatrixVectorIndexing = */ true
+	}
+};
+
 uint32_t findMemoryType(uint32_t typeFilter, const VkPhysicalDeviceMemoryProperties& memProperties, VkMemoryPropertyFlags properties)
 {
 	for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
@@ -431,6 +554,75 @@ void RenderDevice::destroyBuffer(const Buffer& buffer) const
 	}
 }
 
+Image RenderDevice::createImage2D(int width, int height, VkFormat format, int mipLevels, VkImageUsageFlags usage, VkMemoryPropertyFlags properties) const
+{
+	VkImageCreateInfo imageCI = {};
+	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.format = format;
+	imageCI.extent = { width, height, 1 };
+	imageCI.mipLevels = mipLevels;
+	imageCI.arrayLayers = 1;
+	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.usage = usage;
+	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VkImage image;
+	VK_CHECK(vkCreateImage(m_device, &imageCI, nullptr, &image));
+
+	VkMemoryRequirements requirements;
+	vkGetImageMemoryRequirements(m_device, image, &requirements);
+	
+	VkMemoryAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = requirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, m_memProperties, properties);
+
+	VkDeviceMemory memory;
+	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &memory));
+	VK_CHECK(vkBindImageMemory(m_device, image, memory, 0));
+
+	VkImageViewCreateInfo imageViewCI = {};
+	imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCI.image = image;
+	imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCI.format = format;
+	imageViewCI.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCI.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCI.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCI.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageViewCI.subresourceRange.baseMipLevel = 0;
+	imageViewCI.subresourceRange.levelCount = 1;
+	imageViewCI.subresourceRange.baseArrayLayer = 0;
+	imageViewCI.subresourceRange.layerCount = 1;
+	
+	VkImageView imageView;
+	VK_CHECK(vkCreateImageView(m_device, &imageViewCI, nullptr, &imageView));
+
+	return { image, memory, imageView };
+}
+
+void RenderDevice::destroyImage(const Image& image) const
+{
+	if (image.imageView != VK_NULL_HANDLE)
+	{
+		vkDestroyImageView(m_device, image.imageView, nullptr);
+	}
+
+	if (image.image != VK_NULL_HANDLE)
+	{
+		vkDestroyImage(m_device, image.image, nullptr);
+	}
+
+	if (image.memory != VK_NULL_HANDLE)
+	{
+		vkFreeMemory(m_device, image.memory, nullptr);
+	}
+}
+
 void RenderDevice::executeCommands(int bufferCount, const std::function<void(VkCommandBuffer*)>& func) const
 {
 	//Create fence
@@ -475,6 +667,125 @@ void RenderDevice::executeCommands(int bufferCount, const std::function<void(VkC
 	vkFreeCommandBuffers(m_device, m_transientPool, (uint32_t)commandBuffers.size(), commandBuffers.data());
 
 	vkDestroyFence(m_device, buildCompleteFence, nullptr);
+}
+
+VkShaderModule RenderDevice::compileShader(const RenderDevice* device, VkShaderStageFlagBits shaderType, const std::string& source) const
+{
+	using namespace glslang;
+
+	const char* sourceData = source.c_str();
+	int sourceLength = (int)source.size();
+
+	//Select shader language
+	EShLanguage language;
+	const char* shaderName = "";
+
+	switch (shaderType)
+	{
+	case VK_SHADER_STAGE_VERTEX_BIT:
+		language = EShLangVertex; shaderName = "Vertex";
+		break;
+	case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:
+		language = EShLangTessControl; shaderName = "TessControl";
+		break;
+	case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:
+		language = EShLangTessEvaluation; shaderName = "TessEvaluation";
+		break;
+	case VK_SHADER_STAGE_GEOMETRY_BIT:
+		language = EShLangGeometry; shaderName = "Geometry";
+		break;
+	case VK_SHADER_STAGE_FRAGMENT_BIT:
+		language = EShLangFragment; shaderName = "Fragment";
+		break;
+	case VK_SHADER_STAGE_COMPUTE_BIT:
+		language = EShLangCompute; shaderName = "Compute";
+		break;
+	case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
+		language = EShLangRayGen; shaderName = "RayGen";
+		break;
+	case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+		language = EShLangAnyHit; shaderName = "AnyHit";
+		break;
+	case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+		language = EShLangClosestHit; shaderName = "ClosestHit";
+		break;
+	case VK_SHADER_STAGE_MISS_BIT_KHR:
+		language = EShLangMiss; shaderName = "Miss";
+		break;
+	case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+		language = EShLangIntersect; shaderName = "Intersect";
+		break;
+	case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
+		language = EShLangCallable; shaderName = "Callable";
+		break;
+	case VK_SHADER_STAGE_TASK_BIT_NV:
+		language = EShLangTaskNV; shaderName = "TaskNV";
+		break;
+	case VK_SHADER_STAGE_MESH_BIT_NV:
+		language = EShLangMeshNV; shaderName = "MeshNV";
+		break;
+	default:
+		std::cerr << "Unrecognized shader type: " << shaderType << std::endl;
+		return VK_NULL_HANDLE;
+	}
+
+	//Compile shader
+	EShMessages messages = (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules);
+
+	const int defaultVersion = 400;
+
+	std::unique_ptr<TShader> shader = std::make_unique<TShader>(language);
+	shader->setStringsWithLengths(&sourceData, &sourceLength, 1);
+	shader->setEnvInput(EShSourceGlsl, language, EShClientVulkan, defaultVersion);
+	shader->setEnvClient(EShClientVulkan, EShTargetVulkan_1_2);
+	shader->setEnvTarget(EshTargetSpv, EShTargetSpv_1_5);
+
+	if (!shader->parse(&DefaultTBuiltInResource, defaultVersion, false, messages))
+	{
+		std::cerr << "Error generated when compiling " << shaderName << " shader:" << std::endl;
+		std::cerr << shader->getInfoLog() << shader->getInfoDebugLog();
+
+		return VK_NULL_HANDLE;
+	}
+
+	std::unique_ptr<TProgram> program = std::make_unique<TProgram>();
+	program->addShader(shader.get());
+
+	if (!program->link(messages) || !program->mapIO())
+	{
+		std::cerr << "Error generated when compiling " << shaderName << " shader:" << std::endl;
+		std::cerr << shader->getInfoLog() << shader->getInfoDebugLog();
+
+		return VK_NULL_HANDLE;
+	}
+
+	std::vector<uint32_t> spirv;
+	spv::SpvBuildLogger logger;
+
+	SpvOptions spvOptions;
+	spvOptions.generateDebugInfo = false;
+	spvOptions.disableOptimizer = false;
+	spvOptions.optimizeSize = false;
+	spvOptions.disassemble = false;
+	spvOptions.validate = false;
+	GlslangToSpv(*program->getIntermediate(language), spirv, &logger, &spvOptions);
+
+	if (logger.getAllMessages().size() > 0)
+	{
+		std::cout << "Message generated when compiling " << shaderName << " shader:" << std::endl;
+		std::cout << logger.getAllMessages();
+	}
+
+	//Create shader module
+	VkShaderModuleCreateInfo moduleCI = {};
+	moduleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	moduleCI.pCode = spirv.data();
+	moduleCI.codeSize = spirv.size() * sizeof(uint32_t);
+
+	VkShaderModule shaderModule = VK_NULL_HANDLE;
+	VK_CHECK(vkCreateShaderModule(device->getDevice(), &moduleCI, nullptr, &shaderModule));
+
+	return shaderModule;
 }
 
 void RenderDevice::destroy()

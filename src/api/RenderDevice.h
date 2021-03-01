@@ -3,12 +3,74 @@
 #include <vector>
 #include <iostream>
 #include <functional>
+#include <string>
 
 #include <volk.h>
 
 #include "Window.h"
 
 #define PAUSE_AND_EXIT(x) std::cin.get(); std::exit(x);
+
+struct Buffer
+{
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+};
+
+struct Image
+{
+	VkImage image = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkImageView imageView = VK_NULL_HANDLE;
+};
+
+class RenderDevice
+{
+private:
+	VkInstance m_instance = VK_NULL_HANDLE;
+	VkSurfaceKHR m_surface = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
+
+	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
+	VkPhysicalDeviceMemoryProperties m_memProperties;
+	uint32_t m_queueFamilyIndex = (uint32_t)-1;
+
+	VkDevice m_device = VK_NULL_HANDLE;
+	VkQueue m_queue = VK_NULL_HANDLE;
+	VkCommandPool m_transientPool = VK_NULL_HANDLE;
+public:
+	RenderDevice() {}
+
+	void createInstance(std::vector<const char*> extensions, std::vector<const char*> validationLayers, bool enableDebugMessenger);
+	void createSurface(const Window& window);
+	void choosePhysicalDevice();
+	void getPhysicalDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNextChain) const;
+	void getPhysicalDevicePropertes(VkPhysicalDeviceProperties* properties, void* pNextChain) const;
+	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain = nullptr, VkPhysicalDeviceFeatures* pFeatures = nullptr);
+
+	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
+	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
+
+	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
+	VkDeviceAddress getBufferAddress(VkBuffer buffer) const;
+	void destroyBuffer(const Buffer& buffer) const;
+
+	Image createImage2D(int width, int height, VkFormat format, int mipLevels, VkImageUsageFlags usage, VkMemoryPropertyFlags properties) const;
+	void destroyImage(const Image& image) const;
+
+	void executeCommands(int bufferCount, const std::function<void(VkCommandBuffer*)>& func) const;
+
+	VkShaderModule compileShader(const RenderDevice* device, VkShaderStageFlagBits shaderType, const std::string& source) const;
+
+	void destroy();
+
+	inline VkInstance getInstance() const { return m_instance; }
+	inline VkDevice getDevice() const { return m_device; }
+	inline VkQueue getQueue() const { return m_queue; }
+
+	inline VkSurfaceKHR getSurface() const { return m_surface; }
+	inline VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
+};
 
 #define VK_CHECK(x) checkVK(x, __FILE__, __LINE__)
 
@@ -67,52 +129,3 @@ inline bool checkVK(VkResult result, const char* file, unsigned int line)
 
 	return true;
 }
-
-struct Buffer
-{
-	VkBuffer buffer;
-	VkDeviceMemory memory;
-};
-
-class RenderDevice
-{
-private:
-	VkInstance m_instance = VK_NULL_HANDLE;
-	VkSurfaceKHR m_surface = VK_NULL_HANDLE;
-	VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
-
-	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
-	VkPhysicalDeviceMemoryProperties m_memProperties;
-	uint32_t m_queueFamilyIndex = (uint32_t)-1;
-
-	VkDevice m_device = VK_NULL_HANDLE;
-	VkQueue m_queue = VK_NULL_HANDLE;
-	VkCommandPool m_transientPool = VK_NULL_HANDLE;
-public:
-	RenderDevice() {}
-
-	void createInstance(std::vector<const char*> extensions, std::vector<const char*> validationLayers, bool enableDebugMessenger);
-	void createSurface(const Window& window);
-	void choosePhysicalDevice();
-	void getPhysicalDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNextChain) const;
-	void getPhysicalDevicePropertes(VkPhysicalDeviceProperties* properties, void* pNextChain) const;
-	void createLogicalDevice(std::vector<const char*> extensions, std::vector<const char*> validationLayers, void* pNextChain = nullptr, VkPhysicalDeviceFeatures* pFeatures = nullptr);
-
-	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
-	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
-
-	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
-	VkDeviceAddress getBufferAddress(VkBuffer buffer) const;
-	void destroyBuffer(const Buffer& buffer) const;
-
-	void executeCommands(int bufferCount, const std::function<void(VkCommandBuffer*)>& func) const;
-
-	void destroy();
-
-	inline VkInstance getInstance() const { return m_instance; }
-	inline VkDevice getDevice() const { return m_device; }
-	inline VkQueue getQueue() const { return m_queue; }
-
-	inline VkSurfaceKHR getSurface() const { return m_surface; }
-	inline VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
-};

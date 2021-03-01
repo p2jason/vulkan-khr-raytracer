@@ -25,8 +25,11 @@ struct BLASGeometryInfo
 	std::vector<VkAccelerationStructureBuildRangeInfoKHR> rangeInfoArray;
 };
 
+class RaytracingPipeline;
+
 class BottomLevelAS;
 class TopLevelAS;
+class ShaderBindingTable;
 
 class RaytracingDevice
 {
@@ -56,6 +59,7 @@ public:
 	std::vector<const char*> getRequiredExtensions() const;
 
 	inline const RenderDevice* getRenderDevice() const { return m_renderDevice; }
+	inline VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTPipelineProperties() const { return m_rtPipelineProperties; }
 };
 
 class BottomLevelAS
@@ -94,5 +98,25 @@ public:
 	void init(const RaytracingDevice* device);
 	void destroy();
 
+	inline VkAccelerationStructureKHR get() const { return m_accelerationStructure; }
+
 	friend class RaytracingDevice;
+};
+
+class ShaderBindingTable
+{
+private:
+	uint32_t m_handleSize;
+	uint32_t m_handleAlignedSize;
+	uint32_t m_numEntries;
+
+	Buffer m_buffer;
+	const RaytracingDevice* m_device = nullptr;
+public:
+	ShaderBindingTable() {}
+
+	void init(const RaytracingDevice* device, const RaytracingPipeline& pipeline);
+	void destroy();
+
+	void raytrace(VkCommandBuffer buffer, int width, int height, int depth = 1) const;
 };
