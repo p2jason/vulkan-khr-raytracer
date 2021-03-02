@@ -6,30 +6,83 @@ const char* RAYGEN_SHADER = R"(#version 460
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1, rgba32f) uniform image2D image;
 
+struct hitPayload
+{
+	vec3 hitValue;
+};
+
+layout(location = 0) rayPayloadEXT hitPayload payload;
+
 void main() {
-	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(0.9, 0.7, 0.55, 1.0));
+	vec2 pixelUV = (vec2(gl_LaunchIDEXT.xy) + vec2(0.5)) / vec2(gl_LaunchSizeEXT.xy);
+
+	vec3 direction;
+	{
+		vec2 rUV = 2.0 * pixelUV - 1.0;
+		rUV *= tan(70.0 / 2.0);
+		rUV.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
+		rUV.y *= -1;
+
+		direction = normalize(vec3(rUV, -1.0));
+	}
+
+	vec3 origin = vec3(0, 0, 10);
+
+	uint rayFlags = gl_RayFlagsOpaqueEXT;
+	float tMin = 0.001;
+	float tMax = 10000.0;
+
+	traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 0, origin, tMin, direction, tMax, 0);
+
+	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payload.hitValue, 1.0));
 })";
 
 const char* MISS_SHADER = R"(#version 460
+#extension GL_EXT_ray_tracing : require
+
+struct hitPayload
+{
+	vec3 hitValue;
+};
+
+layout(location = 0) rayPayloadInEXT hitPayload payload;
 
 void main() {
-
+	payload.hitValue = vec3(0.1, 0.5, 0.7);
 })";
 
 const char* CLOSEST_HIT_SHADER = R"(#version 460
+#extension GL_EXT_ray_tracing : require
+
+struct hitPayload
+{
+	vec3 hitValue;
+};
+
+layout(location = 0) rayPayloadInEXT hitPayload payload;
 
 void main() {
-
+	payload.hitValue = vec3(1.0, 0.0, 0.0);
 })";
+
+#define ADD_MODULE(l, m) { VkShaderModule shaderModule__ = m; if (shaderModule__ != VK_NULL_HANDLE) return false; (l).push_back(m); }
 
 bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
-	pipelineInfo = {};
-	pipelineInfo.raygenModules.push_back(renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, RAYGEN_SHADER));
-	pipelineInfo.missModules.push_back(renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, MISS_SHADER));
-	pipelineInfo.hitGroupModules.push_back({ renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, CLOSEST_HIT_SHADER), VK_NULL_HANDLE, VK_NULL_HANDLE });
+	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, RAYGEN_SHADER);
+	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, MISS_SHADER);
+	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, CLOSEST_HIT_SHADER);
+
+	if (raygenModule == VK_NULL_HANDLE || missModule == VK_NULL_HANDLE || closestModule == VK_NULL_HANDLE)
+	{
+		return false;
+	}
+
+	pipelineInfo.raygenModules.push_back(raygenModule);
+	pipelineInfo.missModules.push_back(missModule);
+	pipelineInfo.hitGroupModules.push_back({ closestModule, VK_NULL_HANDLE, VK_NULL_HANDLE });
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {

@@ -23,7 +23,7 @@ void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerat
 	//Add BLAS instances to TLAS
 	for (unsigned int i = 0; i < node->mNumMeshes; ++i)
 	{
-		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, 0/*gl_InstanceCustomIndexEXT*/, 0x00, 0, VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR));
+		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, 0/*gl_InstanceCustomIndexEXT*/, 0xFF, 0, VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR));
 	}
 
 	//Traverse children
@@ -69,19 +69,19 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, SceneR
 
 				indexMemory[3 * i] = mesh->mFaces[i].mIndices[0];
 				indexMemory[3 * i + 1] = mesh->mFaces[i].mIndices[1];
-				indexMemory[3 * i + 3] = mesh->mFaces[i].mIndices[2];
+				indexMemory[3 * i + 2] = mesh->mFaces[i].mIndices[2];
 			}
 
 			vkUnmapMemory(device->getRenderDevice()->getDevice(), stagingBuffer.memory);
 
 			//Create BLAS for mesh
 			Buffer vertexBuffer = device->getRenderDevice()->createBuffer(vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+																							VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 			Buffer indexBuffer = device->getRenderDevice()->createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+																						VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(MeshVertex), mesh->mNumVertices, indexBuffer, { 0 });
+			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(MeshVertex), mesh->mNumVertices, indexBuffer, mesh->mNumFaces, { 0 });
 
 			meshBLASList[i].init(device, geomertryInfo, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
 

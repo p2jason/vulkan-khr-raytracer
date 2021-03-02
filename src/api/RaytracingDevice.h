@@ -50,7 +50,7 @@ public:
 
 	RaytracingDeviceFeatures* init(RenderDevice* renderDevice);
 
-	std::shared_ptr<const BLASGeometryInfo> compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, VkDeviceOrHostAddressConstKHR transformData) const;
+	std::shared_ptr<const BLASGeometryInfo> compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, unsigned int indexCount, VkDeviceOrHostAddressConstKHR transformData) const;
 	VkAccelerationStructureInstanceKHR compileInstances(const BottomLevelAS& blas, glm::mat4 transform, uint32_t instanceCustomIndex, uint32_t mask, uint32_t instanceShaderBindingTableRecordOffset, VkGeometryInstanceFlagsKHR flags) const;
 
 	void buildBLAS(std::vector<BottomLevelAS>& blasList) const;

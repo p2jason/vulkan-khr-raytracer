@@ -96,7 +96,11 @@ int main()
 	SceneRepresentation scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkey.glb");
 
 	BasicRaytracingPipeline pipeline;
-	pipeline.init(&raytracingDevice, VK_NULL_HANDLE);
+	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE))
+	{
+		PAUSE_AND_EXIT(-1);
+	}
+
 	pipeline.createRenderTarget(1280, 720);
 	pipeline.bindToScene(scene);
 
