@@ -24,6 +24,13 @@ struct Image
 	VkImageView imageView = VK_NULL_HANDLE;
 };
 
+struct ImageState
+{
+	VkAccessFlags accessFlags;
+	VkPipelineStageFlags stageMask;
+	VkImageLayout layout;
+};
+
 class RenderDevice
 {
 private:

@@ -6,35 +6,46 @@
 
 struct RTPipelineInfo
 {
-	std::vector<VkPipelineShaderStageCreateInfo> stages;
-	std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
+	std::vector<VkShaderModule> raygenModules;
+	std::vector<VkShaderModule> missModules;
+	std::vector<std::tuple<VkShaderModule, VkShaderModule, VkShaderModule>> hitGroupModules;
 
 	std::vector<VkDescriptorSetLayout> descSetLayouts;
 	std::vector<VkPushConstantRange> pushConstants;
 
 	int maxRecursionDepth = 1;
-
-	std::vector<VkShaderModule> cleanupModules;
 };
 
 class RaytracingPipeline
 {
+private:
+	uint32_t m_numRaygenShaders = 0;
+	uint32_t m_numMissShaders = 0;
+	uint32_t m_numHitGroups = 0;
+
+	uint32_t m_sbtHandleSize = 0;
+	uint32_t m_sbtHandleAlignedSize = 0;
+	uint32_t m_sbtNumEntries = 0;
 protected:
 	VkPipeline m_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout m_layout = VK_NULL_HANDLE;
 
-	RTPipelineInfo m_pipelineInfo = {};
+	Buffer m_sbtBuffer;
 
 	const RaytracingDevice* m_device = nullptr;
 protected:
-	virtual RTPipelineInfo create(const RaytracingDevice* device) = 0;
+	virtual bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo) = 0;
 	virtual void clean(const RaytracingDevice* device) {}
+
+	virtual void bind(VkCommandBuffer commandBuffer) {}
 public:
 	bool init(const RaytracingDevice* device, VkPipelineCache cache);
 	void destroy();
 
-	inline const std::vector<VkRayTracingShaderGroupCreateInfoKHR>& getShaderGroups() const { return m_pipelineInfo.rtShaderGroups; }
+	void raytrace(VkCommandBuffer buffer);
+
+	virtual Image getRenderTarget() const = 0;
+	virtual glm::ivec2 getRenderTargetSize() const = 0;
 
 	inline VkPipeline getPipeline() const { return m_pipeline; }
-	inline VkPipelineLayout getPipelineLayout() const { return m_layout; }
 };

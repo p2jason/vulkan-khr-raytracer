@@ -14,6 +14,8 @@
 #include "scene/ScenePresenter.h"
 #include "scene/SceneLoader.h"
 
+#include "scene/SimpleRaytracingPipeling.h"
+
 #include <glm/glm.hpp>
 
 int main()
@@ -93,6 +95,11 @@ int main()
 
 	SceneRepresentation scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkey.glb");
 
+	BasicRaytracingPipeline pipeline;
+	pipeline.init(&raytracingDevice, VK_NULL_HANDLE);
+	pipeline.createRenderTarget(1280, 720);
+	pipeline.bindToScene(scene);
+
 	while (!window.isCloseRequested())
 	{
 		window.pollEvents();
@@ -115,12 +122,13 @@ int main()
 
 		VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
-		presenter.beginRenderPass(commandBuffer, imageIndex, { { 0, 0 }, { (uint32_t)viewportSize.x, (uint32_t)viewportSize.y } });
+		pipeline.raytrace(commandBuffer);
 
-		presenter.showRender(commandBuffer);
-
-		presenter.endRenderPass(commandBuffer);
-
+		VkRect2D renderArea = { { 0, 0 }, { (uint32_t)viewportSize.x, (uint32_t)viewportSize.y } };
+		ImageState previousImageState = { VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_IMAGE_LAYOUT_GENERAL };
+		
+		presenter.showRender(commandBuffer, pipeline, imageIndex, renderArea, previousImageState, VK_IMAGE_LAYOUT_GENERAL);
+		
 		VK_CHECK(vkEndCommandBuffer(commandBuffer));
 
 		renderDevice.submit({ commandBuffer }, { { imageAvailableSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT } }, { renderCompleteSemaphore }, renderFinishedFence);
@@ -135,6 +143,8 @@ int main()
 		std::this_thread::sleep_for(1ms);
 	}
 
+	pipeline.destroyRenderTarget();
+	pipeline.destroy();
 	scene.destroy();
 
 	vkDestroyFence(device, renderFinishedFence, nullptr);

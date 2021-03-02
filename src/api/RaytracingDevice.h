@@ -102,21 +102,3 @@ public:
 
 	friend class RaytracingDevice;
 };
-
-class ShaderBindingTable
-{
-private:
-	uint32_t m_handleSize;
-	uint32_t m_handleAlignedSize;
-	uint32_t m_numEntries;
-
-	Buffer m_buffer;
-	const RaytracingDevice* m_device = nullptr;
-public:
-	ShaderBindingTable() {}
-
-	void init(const RaytracingDevice* device, const RaytracingPipeline& pipeline);
-	void destroy();
-
-	void raytrace(VkCommandBuffer buffer, int width, int height, int depth = 1) const;
-};

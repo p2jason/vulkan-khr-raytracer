@@ -1,74 +1,35 @@
 #include "SimpleRaytracingPipeling.h"
 
 const char* RAYGEN_SHADER = R"(#version 460
+#extension GL_EXT_ray_tracing : require
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = 0, binding = 1, rgb32f) uniform accelerationStructureEXT topLevelAS;
+layout(set = 0, binding = 1, rgba32f) uniform image2D image;
 
 void main() {
-	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(0.1, 0.7, 0.55, 1.0));
+	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(0.9, 0.7, 0.55, 1.0));
 })";
 
-const char* MISS_SHADER = R"(#version 430
-
-void main() {
-
-})";
-
-const char* CLOSEST_HIT_SHADER = R"(#version 430
+const char* MISS_SHADER = R"(#version 460
 
 void main() {
 
 })";
 
-RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
+const char* CLOSEST_HIT_SHADER = R"(#version 460
+
+void main() {
+
+})";
+
+bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo)
 {
-	RTPipelineInfo pipelineInfo = {};
-
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
-	//Compile raygen shader
-	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, RAYGEN_SHADER);
-	pipelineInfo.stages.push_back({ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_RAYGEN_BIT_KHR, raygenModule, "main", nullptr });
-
-	VkRayTracingShaderGroupCreateInfoKHR shaderGroupCI = {};
-	shaderGroupCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-	shaderGroupCI.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-	shaderGroupCI.generalShader = (uint32_t)pipelineInfo.stages.size() - 1;
-	shaderGroupCI.closestHitShader = VK_SHADER_UNUSED_KHR;
-	shaderGroupCI.anyHitShader = VK_SHADER_UNUSED_KHR;
-	shaderGroupCI.intersectionShader = VK_SHADER_UNUSED_KHR;
-	pipelineInfo.rtShaderGroups.push_back(shaderGroupCI);
-
-	//Compile miss shader
-	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, MISS_SHADER);
-	pipelineInfo.stages.push_back({ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_MISS_BIT_KHR, missModule, "main", nullptr });
-
-	shaderGroupCI = {};
-	shaderGroupCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-	shaderGroupCI.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-	shaderGroupCI.generalShader = (uint32_t)pipelineInfo.stages.size() - 1;
-	shaderGroupCI.closestHitShader = VK_SHADER_UNUSED_KHR;
-	shaderGroupCI.anyHitShader = VK_SHADER_UNUSED_KHR;
-	shaderGroupCI.intersectionShader = VK_SHADER_UNUSED_KHR;
-	pipelineInfo.rtShaderGroups.push_back(shaderGroupCI);
-
-	//Compile closest hit shader
-	VkShaderModule closestHitModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, CLOSEST_HIT_SHADER);
-	pipelineInfo.stages.push_back({ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, closestHitModule, "main", nullptr });
-
-	shaderGroupCI = {};
-	shaderGroupCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-	shaderGroupCI.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-	shaderGroupCI.generalShader = VK_SHADER_UNUSED_KHR;
-	shaderGroupCI.closestHitShader = (uint32_t)pipelineInfo.stages.size() - 1;
-	shaderGroupCI.anyHitShader = VK_SHADER_UNUSED_KHR;
-	shaderGroupCI.intersectionShader = VK_SHADER_UNUSED_KHR;
-	pipelineInfo.rtShaderGroups.push_back(shaderGroupCI);
-
-	pipelineInfo.cleanupModules.push_back(raygenModule);
-	pipelineInfo.cleanupModules.push_back(missModule);
-	pipelineInfo.cleanupModules.push_back(closestHitModule);
+	pipelineInfo = {};
+	pipelineInfo.raygenModules.push_back(renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, RAYGEN_SHADER));
+	pipelineInfo.missModules.push_back(renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, MISS_SHADER));
+	pipelineInfo.hitGroupModules.push_back({ renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, CLOSEST_HIT_SHADER), VK_NULL_HANDLE, VK_NULL_HANDLE });
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {
@@ -82,6 +43,7 @@ RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
 	descSetLayoutCI.pBindings = bindings;
 	
 	VK_CHECK(vkCreateDescriptorSetLayout(renderDevice->getDevice(), &descSetLayoutCI, nullptr, &m_descSetLayout));
+	pipelineInfo.descSetLayouts.push_back(m_descSetLayout);
 
 	//Create descriptor pool and allocate descriptor sets
 	VkDescriptorPoolSize descPoolSizes[] = {
@@ -93,6 +55,7 @@ RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
 	descPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descPoolCI.poolSizeCount = sizeof(descPoolSizes) / sizeof(descPoolSizes[0]);
 	descPoolCI.pPoolSizes = descPoolSizes;
+	descPoolCI.maxSets = 1;
 	
 	VK_CHECK(vkCreateDescriptorPool(renderDevice->getDevice(), &descPoolCI, nullptr, &m_descriptorPool));
 
@@ -104,12 +67,16 @@ RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
 	
 	VK_CHECK(vkAllocateDescriptorSets(renderDevice->getDevice(), &allocInfo, &m_descriptorSet));
 
-	return pipelineInfo;
+	return true;
 }
 
 void BasicRaytracingPipeline::createRenderTarget(int width, int height)
 {
-	m_renderTarget = m_device->getRenderDevice()->createImage2D(width, height, VK_FORMAT_R32G32B32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	m_renderTarget = m_device->getRenderDevice()->createImage2D(width, height, VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	m_renderTargetInitialized = false;
+
+	m_width = width;
+	m_height = height;
 
 	VkDescriptorImageInfo imageInfo = {};
 	imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -159,4 +126,32 @@ void BasicRaytracingPipeline::clean(const RaytracingDevice* raytracingDevice)
 
 	vkDestroyDescriptorPool(device, m_descriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(device, m_descSetLayout, nullptr);
+}
+
+void BasicRaytracingPipeline::bind(VkCommandBuffer commandBuffer)
+{
+	if (!m_renderTargetInitialized)
+	{
+		VkImageMemoryBarrier imageBarrier = {};
+		imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageBarrier.srcAccessMask = 0;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.image = m_renderTarget.image;
+		imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBarrier.subresourceRange.baseArrayLayer = 0;
+		imageBarrier.subresourceRange.layerCount = 1;
+		imageBarrier.subresourceRange.baseMipLevel = 0;
+		imageBarrier.subresourceRange.levelCount = 1;
+
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+											0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+		m_renderTargetInitialized = true;
+	}
+
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 0, 1, &m_descriptorSet, 0, nullptr);
 }

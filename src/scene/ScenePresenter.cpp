@@ -25,8 +25,13 @@ layout(location = 0) in vec2 texCoord;
 
 layout(location = 0) out vec4 outColor;
 
+layout(set = 0, binding = 0) uniform sampler2D renderTarget;
+
 void main() {
-	outColor = vec4(0.5 * texCoord + 0.5, 0.5, 1.0);
+	vec2 uv = 0.5 * texCoord + 0.5;
+	vec3 color = texture(renderTarget, uv).rgb;
+
+	outColor = vec4(color, 1.0);
 })";
 
 void ScenePresenter::createRenderPass()
@@ -81,16 +86,63 @@ void ScenePresenter::createPipeline()
 	VkShaderModule vertexShader = m_device->compileShader(VK_SHADER_STAGE_VERTEX_BIT, std::string(VERTEX_SHADER));
 	VkShaderModule fragmentShader = m_device->compileShader(VK_SHADER_STAGE_FRAGMENT_BIT, std::string(FRAGMENT_SHADER));
 
-	//Create descriptor set layout
+	//Create sampler
+	VkSamplerCreateInfo samplerCI = {};
+	samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerCI.magFilter = VK_FILTER_NEAREST;
+	samplerCI.minFilter = VK_FILTER_LINEAR;
+	samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCI.mipLodBias = 0.0f;
+	samplerCI.anisotropyEnable = VK_FALSE;
+	samplerCI.maxAnisotropy = 1.0f;
+	samplerCI.compareEnable = VK_FALSE;
+	samplerCI.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerCI.minLod = 0.0f;
+	samplerCI.maxLod = 1.0f;
+	samplerCI.unnormalizedCoordinates = VK_FALSE;
+
+	vkCreateSampler(m_device->getDevice(), &samplerCI, nullptr, &m_sampler);
+
+	//Create descriptor set
 	VkDescriptorSetLayoutBinding setLayoutBindings[] = {
-		{ 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+		{ 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &m_sampler }
 	};
+
+	VkDescriptorSetLayoutCreateInfo descSetLayoutCI = {};
+	descSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descSetLayoutCI.bindingCount = sizeof(setLayoutBindings) / sizeof(setLayoutBindings[0]);
+	descSetLayoutCI.pBindings = setLayoutBindings;
+
+	VK_CHECK(vkCreateDescriptorSetLayout(m_device->getDevice(), &descSetLayoutCI, nullptr, &m_descLayout));
+
+	VkDescriptorPoolSize poolSizes[] = {
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
+	};
+
+	VkDescriptorPoolCreateInfo descPoolCI = {};
+	descPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	descPoolCI.poolSizeCount = sizeof(poolSizes) / sizeof(poolSizes[0]);
+	descPoolCI.pPoolSizes = poolSizes;
+	descPoolCI.maxSets = 1;
+
+	VK_CHECK(vkCreateDescriptorPool(m_device->getDevice(), &descPoolCI, nullptr, &m_descriptorPool));
+
+	VkDescriptorSetAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = m_descriptorPool;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.pSetLayouts = &m_descLayout;
+
+	VK_CHECK(vkAllocateDescriptorSets(m_device->getDevice(), &allocInfo, &m_descriptorSet));
 
 	//Create pipeline layout
 	VkPipelineLayoutCreateInfo pipelineLayoutCI = {};
 	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutCI.setLayoutCount = 0;
-	pipelineLayoutCI.pSetLayouts = nullptr;
+	pipelineLayoutCI.setLayoutCount = 1;
+	pipelineLayoutCI.pSetLayouts = &m_descLayout;
 
 	vkCreatePipelineLayout(m_device->getDevice(), &pipelineLayoutCI, nullptr, &m_pipelineLayout);
 
@@ -272,6 +324,11 @@ void ScenePresenter::init(const RenderDevice* device, int initialWidth, int init
 
 void ScenePresenter::destroy()
 {
+	vkDestroySampler(m_device->getDevice(), m_sampler, nullptr);
+
+	vkDestroyDescriptorSetLayout(m_device->getDevice(), m_descLayout, nullptr);
+	vkDestroyDescriptorPool(m_device->getDevice(), m_descriptorPool, nullptr);
+
 	vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
 	vkDestroyPipeline(m_device->getDevice(), m_pipeline, nullptr);
 	vkDestroyRenderPass(m_device->getDevice(), m_renderPass, nullptr);
@@ -280,8 +337,42 @@ void ScenePresenter::destroy()
 	destroySwapchain();
 }
 
-void ScenePresenter::beginRenderPass(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkRect2D renderArea) const
+
+void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingPipeline& pipeline, uint32_t imageIndex, VkRect2D renderArea, ImageState prevImageState, VkImageLayout finalLayout) const
 {
+	//Update pipeline descriptor set
+	VkDescriptorImageInfo imageInfo = {};
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfo.imageView = pipeline.getRenderTarget().imageView;
+
+	VkWriteDescriptorSet setWrite = {};
+	setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	setWrite.dstSet = m_descriptorSet;
+	setWrite.dstBinding = 0;
+	setWrite.descriptorCount = 1;
+	setWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	setWrite.pImageInfo = &imageInfo;
+
+	vkUpdateDescriptorSets(m_device->getDevice(), 1, &setWrite, 0, nullptr);
+
+	VkImageMemoryBarrier imageBarrier = {};
+	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageBarrier.srcAccessMask = prevImageState.accessFlags;
+	imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	imageBarrier.oldLayout = prevImageState.layout;
+	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrier.image = pipeline.getRenderTarget().image;
+	imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrier.subresourceRange.baseArrayLayer = 0;
+	imageBarrier.subresourceRange.layerCount = 1;
+	imageBarrier.subresourceRange.baseMipLevel = 0;
+	imageBarrier.subresourceRange.levelCount = 1;
+
+	vkCmdPipelineBarrier(commandBuffer, prevImageState.stageMask, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+						 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
 	VkClearValue clearValue = { 0.1f, 0.4f, 0.7f, 1.0f };
 
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
@@ -293,21 +384,25 @@ void ScenePresenter::beginRenderPass(VkCommandBuffer commandBuffer, uint32_t ima
 	renderPassBeginInfo.pClearValues = &clearValue;
 
 	vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-}
 
-void ScenePresenter::endRenderPass(VkCommandBuffer commandBuffer) const
-{
-	vkCmdEndRenderPass(commandBuffer);
-}
-
-void ScenePresenter::showRender(VkCommandBuffer commandBuffer) const
-{
+	//Record drawing commands
 	VkViewport viewport = { 0, 0, (float)m_width, (float)m_height, 0, 1 };
 	VkRect2D scissor = { { 0, 0 }, { (uint32_t)m_width, (uint32_t)m_height } };
 
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
 	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 	vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+
+	vkCmdEndRenderPass(commandBuffer);
+
+	imageBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	imageBarrier.dstAccessMask = 0;
+	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageBarrier.newLayout = prevImageState.layout;
+
+	vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+						 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
 }

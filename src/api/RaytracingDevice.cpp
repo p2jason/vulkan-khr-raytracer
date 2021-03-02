@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <iostream>
 
-#define UINT32_ALIGN(x, a) ((x + (a - 1)) & ~(a - 1))
-
 RaytracingDevice::~RaytracingDevice()
 {
 
@@ -306,7 +304,7 @@ void RaytracingDevice::buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerat
 	buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 	buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
 
-	uint32_t count = instances.size();
+	uint32_t count = (uint32_t)instances.size();
 
 	VkAccelerationStructureBuildSizesInfoKHR sizeInfo = {};
 	sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
@@ -435,73 +433,4 @@ void TopLevelAS::destroy()
 	}
 
 	m_device->getRenderDevice()->destroyBuffer(m_accelStorageBuffer);
-}
-
-void ShaderBindingTable::init(const RaytracingDevice* raytracingDevice, const RaytracingPipeline& pipeline)
-{
-	const std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups = pipeline.getShaderGroups();
-
-	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
-	VkDevice device = renderDevice->getDevice();
-
-	//Allocate SBT buffer
-	uint32_t sbtHandleSize = raytracingDevice->getRTPipelineProperties().shaderGroupHandleSize;
-	uint32_t sbtHandleAlignedSize = UINT32_ALIGN(sbtHandleSize, raytracingDevice->getRTPipelineProperties().shaderGroupBaseAlignment);
-	uint32_t sbtSize = shaderGroups.size() * sbtHandleAlignedSize;
-
-	Buffer sbtBuffer = renderDevice->createBuffer(sbtSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-		VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	Buffer stagingBuffer = renderDevice->createBuffer(sbtSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-	//Get shader handles
-	uint8_t* shaderHandles = new uint8_t[shaderGroups.size() * sbtHandleSize];
-	VK_CHECK(vkGetRayTracingShaderGroupHandlesKHR(device, pipeline.getPipeline(), 0, shaderGroups.size(), shaderGroups.size() * sbtHandleSize, shaderHandles));
-
-	//Write handles to SBT bufer
-	uint8_t* memory = nullptr;
-	VK_CHECK(vkMapMemory(device, stagingBuffer.memory, 0, sbtSize, 0, (void**)&memory));
-
-	for (uint32_t i = 0; i < shaderGroups.size(); ++i)
-	{
-		memcpy(memory, &shaderHandles[i * sbtHandleSize], sbtHandleSize);
-		memory += sbtHandleAlignedSize;
-	}
-
-	vkUnmapMemory(device, stagingBuffer.memory);
-
-	renderDevice->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
-	{
-		VkBufferCopy region = {};
-		region.srcOffset = 0;
-		region.dstOffset = 0;
-		region.size = sbtSize;
-
-		vkCmdCopyBuffer(commandBuffers[0], stagingBuffer.buffer, sbtBuffer.buffer, 1, &region);
-	});
-
-	//Free staging buffer
-	delete[] shaderHandles;
-
-	renderDevice->destroyBuffer(stagingBuffer);
-}
-
-void ShaderBindingTable::destroy()
-{
-	m_device->getRenderDevice()->destroyBuffer(m_buffer);
-}
-
-void ShaderBindingTable::raytrace(VkCommandBuffer buffer, int width, int height, int depth) const
-{
-	VkDeviceAddress sbtAddress = m_device->getRenderDevice()->getBufferAddress(m_buffer.buffer);
-
-	VkStridedDeviceAddressRegionKHR addressRegions[] = {
-		{ sbtAddress, m_handleAlignedSize, m_handleAlignedSize },
-		{ sbtAddress + m_handleAlignedSize, m_handleAlignedSize, m_handleAlignedSize },
-		{ sbtAddress + 2 * m_handleAlignedSize, m_handleAlignedSize, m_handleAlignedSize },
-		{ 0, 0, 0 }
-	};
-
-	vkCmdTraceRaysKHR(buffer, &addressRegions[0], &addressRegions[1],
-							  &addressRegions[2], &addressRegions[3],
-							  width, height, depth);
 }
