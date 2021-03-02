@@ -60,7 +60,7 @@ public:
 
 	void executeCommands(int bufferCount, const std::function<void(VkCommandBuffer*)>& func) const;
 
-	VkShaderModule compileShader(const RenderDevice* device, VkShaderStageFlagBits shaderType, const std::string& source) const;
+	VkShaderModule compileShader(VkShaderStageFlagBits shaderType, const std::string& source) const;
 
 	void destroy();
 

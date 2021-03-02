@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.7 FATAL_ERROR)
 
 project(VulkanKHRRaytracer)
 
@@ -87,9 +87,9 @@ set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "Do not build ASSIMP tools")
 add_subdirectory(third_party/assimp)
 
 # Setup glslang
-set(SKIP_GLSLANG_INSTALL OFF CACHE BOOL "")
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(SKIP_GLSLANG_INSTALL ON CACHE BOOL "" FORCE)
 set(ENABLE_SPVREMAPPER OFF CACHE BOOL "")
-set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
 set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
 set(ENABLE_CTEST OFF CACHE BOOL "")
 set(ENABLE_HLSL OFF CACHE BOOL "")
@@ -109,6 +109,7 @@ target_link_libraries(${PROJECT_NAME} glm)
 target_link_libraries(${PROJECT_NAME} volk)
 target_link_libraries(${PROJECT_NAME} assimp::assimp)
 target_link_libraries(${PROJECT_NAME} glslang)
+target_link_libraries(${PROJECT_NAME} SPIRV)
 
 # Setup IDE filters
 macro(ConvertToFilters curdir)

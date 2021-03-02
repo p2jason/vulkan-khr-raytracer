@@ -28,7 +28,7 @@ RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
 	//Compile raygen shader
-	VkShaderModule raygenModule = renderDevice->compileShader(device->getRenderDevice(), VK_SHADER_STAGE_RAYGEN_BIT_KHR, RAYGEN_SHADER);
+	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, RAYGEN_SHADER);
 	pipelineInfo.stages.push_back({ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_RAYGEN_BIT_KHR, raygenModule, "main", nullptr });
 
 	VkRayTracingShaderGroupCreateInfoKHR shaderGroupCI = {};
@@ -41,10 +41,10 @@ RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
 	pipelineInfo.rtShaderGroups.push_back(shaderGroupCI);
 
 	//Compile miss shader
-	VkShaderModule missModule = renderDevice->compileShader(device->getRenderDevice(), VK_SHADER_STAGE_MISS_BIT_KHR, MISS_SHADER);
+	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, MISS_SHADER);
 	pipelineInfo.stages.push_back({ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_MISS_BIT_KHR, missModule, "main", nullptr });
 
-	VkRayTracingShaderGroupCreateInfoKHR shaderGroupCI = {};
+	shaderGroupCI = {};
 	shaderGroupCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 	shaderGroupCI.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
 	shaderGroupCI.generalShader = (uint32_t)pipelineInfo.stages.size() - 1;
@@ -54,10 +54,10 @@ RTPipelineInfo BasicRaytracingPipeline::create(const RaytracingDevice* device)
 	pipelineInfo.rtShaderGroups.push_back(shaderGroupCI);
 
 	//Compile closest hit shader
-	VkShaderModule closestHitModule = renderDevice->compileShader(device->getRenderDevice(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, CLOSEST_HIT_SHADER);
+	VkShaderModule closestHitModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, CLOSEST_HIT_SHADER);
 	pipelineInfo.stages.push_back({ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, closestHitModule, "main", nullptr });
 
-	VkRayTracingShaderGroupCreateInfoKHR shaderGroupCI = {};
+	shaderGroupCI = {};
 	shaderGroupCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 	shaderGroupCI.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
 	shaderGroupCI.generalShader = VK_SHADER_UNUSED_KHR;

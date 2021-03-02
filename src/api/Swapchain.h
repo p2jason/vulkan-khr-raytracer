@@ -36,9 +36,9 @@ private:
 
 	std::vector<VkImage> m_images;
 	std::vector<VkImageView> m_imageViews;
-private:
-	Swapchain() {}
 public:
+	Swapchain() {}
+
 	uint32_t acquireNextImage(VkSemaphore semaphore) const;
 	void present(VkQueue queue, uint32_t imageIndex, const std::vector<VkSemaphore>& waitSemaphores) const;
 

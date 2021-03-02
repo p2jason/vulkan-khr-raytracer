@@ -29,7 +29,7 @@ const TBuiltInResource DefaultTBuiltInResource =
 	/* .maxCombinedTextureImageUnits = */ 80,
 	/* .maxTextureImageUnits = */ 32,
 	/* .maxFragmentUniformComponents = */ 4096,
-	/* .maxDrawBuffers = */ 32,
+	/* .maxDrawBuffers = */ 32,	
 	/* .maxVertexUniformVectors = */ 128,
 	/* .maxVaryingVectors = */ 8,
 	/* .maxFragmentUniformVectors = */ 16,
@@ -560,7 +560,7 @@ Image RenderDevice::createImage2D(int width, int height, VkFormat format, int mi
 	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCI.imageType = VK_IMAGE_TYPE_2D;
 	imageCI.format = format;
-	imageCI.extent = { width, height, 1 };
+	imageCI.extent = { (uint32_t)width, (uint32_t)height, 1 };
 	imageCI.mipLevels = mipLevels;
 	imageCI.arrayLayers = 1;
 	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -669,7 +669,7 @@ void RenderDevice::executeCommands(int bufferCount, const std::function<void(VkC
 	vkDestroyFence(m_device, buildCompleteFence, nullptr);
 }
 
-VkShaderModule RenderDevice::compileShader(const RenderDevice* device, VkShaderStageFlagBits shaderType, const std::string& source) const
+VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, const std::string& source) const
 {
 	using namespace glslang;
 
@@ -783,7 +783,7 @@ VkShaderModule RenderDevice::compileShader(const RenderDevice* device, VkShaderS
 	moduleCI.codeSize = spirv.size() * sizeof(uint32_t);
 
 	VkShaderModule shaderModule = VK_NULL_HANDLE;
-	VK_CHECK(vkCreateShaderModule(device->getDevice(), &moduleCI, nullptr, &shaderModule));
+	VK_CHECK(vkCreateShaderModule(m_device, &moduleCI, nullptr, &shaderModule));
 
 	return shaderModule;
 }

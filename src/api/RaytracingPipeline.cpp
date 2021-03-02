@@ -6,6 +6,7 @@ bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipeli
 	m_device = raytracingDevice;
 
 	//Get pipeline info
+	//TODO: Error checking
 	RTPipelineInfo pipelineInfo = create(raytracingDevice);
 
 	//Create pipeline layout
@@ -35,6 +36,8 @@ bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipeli
 	{
 		vkDestroyShaderModule(device, pipelineInfo.cleanupModules[i], nullptr);
 	}
+
+	return true;
 }
 
 void RaytracingPipeline::destroy()
