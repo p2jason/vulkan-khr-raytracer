@@ -2,10 +2,13 @@
 
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
 
 #include <glslang/Public/ShaderLang.h>
 #include <SPIRV/GlslangToSpv.h>
 #include <SPIRV/Logger.h>
+
+#include "Resources.h"
 
 class BeginTerminateHook
 {
@@ -123,6 +126,43 @@ const TBuiltInResource DefaultTBuiltInResource =
 		/* .generalSamplerIndexing = */ true,
 		/* .generalVariableIndexing = */ true,
 		/* .generalConstantMatrixVectorIndexing = */ true
+	}
+};
+
+class ShaderIncluder : public glslang::TShader::Includer
+{
+public:
+	IncludeResult* includeSystem(const char* headerName, const char* includerName, size_t inclusionDepth) override
+	{
+		return nullptr;
+	}
+
+	IncludeResult* includeLocal(const char* headerName, const char* includerName, size_t inclusionDepth) override
+	{
+		namespace fs = std::filesystem;
+
+		fs::path fullPath = fs::path(Resources::shaderIncludeDir()) / headerName;
+		std::string pathString = fullPath.generic_string();
+
+		if (!fs::exists(fullPath))
+		{
+			return nullptr;
+		}
+
+		std::string* content = new std::string(Resources::loadShader(pathString.c_str(), true));
+
+		return new IncludeResult(pathString, content->c_str(), content->size(), (void*)content);
+	}
+
+	void releaseInclude(IncludeResult* result) override
+	{
+		if (!result)
+		{
+			return;
+		}
+
+		delete (std::string*)result->userData;
+		delete result;
 	}
 };
 
@@ -673,12 +713,12 @@ VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, con
 {
 	using namespace glslang;
 
-	const char* sourceData = source.c_str();
-	int sourceLength = (int)source.size();
-
 	//Select shader language
 	EShLanguage language;
 	const char* shaderName = "";
+
+	const char* shaderSource = source.c_str();
+	int shaderLength = (int)source.size();
 
 	switch (shaderType)
 	{
@@ -728,19 +768,20 @@ VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, con
 		std::cerr << "Unrecognized shader type: " << shaderType << std::endl;
 		return VK_NULL_HANDLE;
 	}
-
+	
 	//Compile shader
 	EShMessages messages = (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules);
 
 	const int defaultVersion = 400;
 
 	std::unique_ptr<TShader> shader = std::make_unique<TShader>(language);
-	shader->setStringsWithLengths(&sourceData, &sourceLength, 1);
+	shader->setStringsWithLengths(&shaderSource, &shaderLength, 1);
 	shader->setEnvInput(EShSourceGlsl, language, EShClientVulkan, defaultVersion);
 	shader->setEnvClient(EShClientVulkan, EShTargetVulkan_1_2);
 	shader->setEnvTarget(EshTargetSpv, EShTargetSpv_1_5);
-
-	if (!shader->parse(&DefaultTBuiltInResource, defaultVersion, false, messages))
+	
+	ShaderIncluder includer;
+	if (!shader->parse(&DefaultTBuiltInResource, defaultVersion, false, messages, includer))
 	{
 		std::cerr << "Error generated when compiling " << shaderName << " shader:" << std::endl;
 		std::cerr << shader->getInfoLog() << shader->getInfoDebugLog();

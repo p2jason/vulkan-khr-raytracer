@@ -97,6 +97,8 @@ set(ENABLE_HLSL OFF CACHE BOOL "")
 add_subdirectory(third_party/glslang)
 
 # Setup sources
+configure_file(src/ProjectBase.h.in generated_headers/ProjectBase.h)
+
 file(GLOB_RECURSE SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.h" "${PROJECT_SOURCE_DIR}/src/*.cpp")
 
 include_directories("${PROJECT_SOURCE_DIR}/src/")
@@ -110,6 +112,9 @@ target_link_libraries(${PROJECT_NAME} volk)
 target_link_libraries(${PROJECT_NAME} assimp::assimp)
 target_link_libraries(${PROJECT_NAME} glslang)
 target_link_libraries(${PROJECT_NAME} SPIRV)
+
+
+target_include_directories(${PROJECT_NAME} PUBLIC src build/generated_headers)
 
 # Setup IDE filters
 macro(ConvertToFilters curdir)
