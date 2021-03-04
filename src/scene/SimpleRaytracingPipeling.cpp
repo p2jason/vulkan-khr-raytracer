@@ -2,8 +2,6 @@
 
 #include "Resources.h"
 
-#define ADD_MODULE(l, m) { VkShaderModule shaderModule__ = m; if (shaderModule__ != VK_NULL_HANDLE) return false; (l).push_back(m); }
-
 bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
@@ -23,8 +21,7 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {
-		{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, nullptr },
-		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr }
+		{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr }
 	};
 
 	VkDescriptorSetLayoutCreateInfo descSetLayoutCI = {};
@@ -37,8 +34,7 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 
 	//Create descriptor pool and allocate descriptor sets
 	VkDescriptorPoolSize descPoolSizes[] = {
-		{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
 	};
 
 	VkDescriptorPoolCreateInfo descPoolCI = {};
@@ -75,7 +71,7 @@ void BasicRaytracingPipeline::createRenderTarget(int width, int height)
 	VkWriteDescriptorSet setWrite = {};
 	setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	setWrite.dstSet = m_descriptorSet;
-	setWrite.dstBinding = 1;
+	setWrite.dstBinding = 0;
 	setWrite.descriptorCount = 1;
 	setWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 	setWrite.pImageInfo = &imageInfo;
@@ -86,28 +82,6 @@ void BasicRaytracingPipeline::createRenderTarget(int width, int height)
 void BasicRaytracingPipeline::destroyRenderTarget()
 {
 	m_device->getRenderDevice()->destroyImage(m_renderTarget);
-}
-
-void BasicRaytracingPipeline::bindToScene(const SceneRepresentation& scene) const
-{
-	//Write TLAS
-	VkAccelerationStructureKHR tlas = scene.tlas.get();
-
-	VkWriteDescriptorSetAccelerationStructureKHR tlasSetWrite = {};
-	tlasSetWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-	tlasSetWrite.accelerationStructureCount = 1;
-	tlasSetWrite.pAccelerationStructures = &tlas;
-
-	//Write other
-	VkWriteDescriptorSet setWrites[1] = {};
-	setWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrites[0].pNext = &tlasSetWrite;
-	setWrites[0].dstSet = m_descriptorSet;
-	setWrites[0].dstBinding = 0;
-	setWrites[0].descriptorCount = 1;
-	setWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-
-	vkUpdateDescriptorSets(m_device->getRenderDevice()->getDevice(), sizeof(setWrites) / sizeof(setWrites[0]), setWrites, 0, nullptr);
 }
 
 void BasicRaytracingPipeline::clean(const RaytracingDevice* raytracingDevice)
@@ -143,5 +117,5 @@ void BasicRaytracingPipeline::bind(VkCommandBuffer commandBuffer)
 		m_renderTargetInitialized = true;
 	}
 
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 0, 1, &m_descriptorSet, 0, nullptr);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 1, 1, &m_descriptorSet, 0, nullptr);
 }

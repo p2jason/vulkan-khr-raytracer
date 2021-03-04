@@ -2,6 +2,8 @@
 
 #include "api/RaytracingDevice.h"
 
+#include "scene/SceneLoader.h"
+
 #include <string>
 
 struct RTPipelineInfo
@@ -26,6 +28,8 @@ private:
 	uint32_t m_sbtHandleSize = 0;
 	uint32_t m_sbtHandleAlignedSize = 0;
 	uint32_t m_sbtNumEntries = 0;
+
+	std::shared_ptr<Scene> m_scene = nullptr;
 protected:
 	VkPipeline m_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout m_layout = VK_NULL_HANDLE;
@@ -39,7 +43,7 @@ protected:
 
 	virtual void bind(VkCommandBuffer commandBuffer) {}
 public:
-	bool init(const RaytracingDevice* device, VkPipelineCache cache);
+	bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene);
 	void destroy();
 
 	void raytrace(VkCommandBuffer buffer);

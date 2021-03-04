@@ -4,12 +4,13 @@
 
 #define UINT32_ALIGN(x, a) ((x + (a - 1)) & ~(a - 1))
 
-bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache)
+bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
 	VkDevice device = renderDevice->getDevice();
 
 	m_device = raytracingDevice;
+	m_scene = scene;
 
 	//Get pipeline info
 	RTPipelineInfo pipelineInfo;
@@ -19,6 +20,8 @@ bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipeli
 	}
 	
 	//Create pipeline layout
+	pipelineInfo.descSetLayouts.insert(pipelineInfo.descSetLayouts.begin(), scene->descriptorSetLayout);
+
 	VkPipelineLayoutCreateInfo pipelineLayoutCI = {};
 	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCI.setLayoutCount = (uint32_t)pipelineInfo.descSetLayouts.size();
@@ -192,10 +195,14 @@ void RaytracingPipeline::destroy()
 	{
 		vkDestroyPipeline(device, m_pipeline, nullptr);
 	}
+
+	m_scene = nullptr;
 }
 
 void RaytracingPipeline::raytrace(VkCommandBuffer commandBuffer)
 {
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 0, 1, &m_scene->descriptorSet, 0, nullptr);
+
 	bind(commandBuffer);
 
 	uint32_t width = getRenderTargetSize().x;

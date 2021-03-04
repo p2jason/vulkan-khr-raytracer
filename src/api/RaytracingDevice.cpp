@@ -69,7 +69,12 @@ RaytracingDeviceFeatures* RaytracingDevice::init(RenderDevice* renderDevice)
 	features->hostQueryReset.pNext = &features->descriptorIndexing;
 	features->hostQueryReset.hostQueryReset = VK_TRUE;
 
-	features->pNext = &features->hostQueryReset;
+	features->scalarBlockLayout = {};
+	features->scalarBlockLayout.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
+	features->scalarBlockLayout.pNext = &features->hostQueryReset;
+	features->scalarBlockLayout.scalarBlockLayout = true;
+
+	features->pNext = &features->scalarBlockLayout;
 
 	m_renderDevice = renderDevice;
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "api/RaytracingPipeline.h"
-#include "SceneLoader.h"
 
 class BasicRaytracingPipeline : public RaytracingPipeline
 {
@@ -23,8 +22,6 @@ private:
 public:
 	void createRenderTarget(int width, int height);
 	void destroyRenderTarget();
-
-	void bindToScene(const SceneRepresentation& scene) const;
 
 	inline Image getRenderTarget() const override { return m_renderTarget; }
 	inline glm::ivec2 getRenderTargetSize() const override { return glm::ivec2(m_width, m_height); }

@@ -93,16 +93,15 @@ int main()
 		VK_CHECK(vkCreateFence(device, &fenceCI, nullptr, &renderFinishedFence));
 	}
 
-	SceneRepresentation scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkey.glb");
+	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkeys.glb");
 
 	BasicRaytracingPipeline pipeline;
-	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE))
+	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))
 	{
 		PAUSE_AND_EXIT(-1);
 	}
 
-	pipeline.createRenderTarget(1280, 720);
-	pipeline.bindToScene(scene);
+	pipeline.createRenderTarget(2560, 1440);
 
 	while (!window.isCloseRequested())
 	{
@@ -149,7 +148,7 @@ int main()
 
 	pipeline.destroyRenderTarget();
 	pipeline.destroy();
-	scene.destroy();
+	scene = nullptr;
 
 	vkDestroyFence(device, renderFinishedFence, nullptr);
 	vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);

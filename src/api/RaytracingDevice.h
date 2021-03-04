@@ -12,6 +12,7 @@ struct RaytracingDeviceFeatures
 	VkPhysicalDeviceBufferAddressFeaturesEXT bufferAddress = {};
 	VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexing = {};
 	VkPhysicalDeviceHostQueryResetFeatures hostQueryReset = {};
+	VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayout = {};
 
 	void* pNext = nullptr;
 };
