@@ -9,3 +9,8 @@ struct hitPayload
 {
 	vec3 hitValue;
 };
+
+struct Material
+{
+	uint albedoIndex;
+};

@@ -13,6 +13,7 @@ layout(location = 0) rayPayloadInEXT hitPayload payload;
 layout(set = 0, binding = 1, scalar) buffer VertexBuffers { Vertex v[]; } vertexBuffers[];
 layout(set = 0, binding = 2) buffer IndexBuffers { uint i[]; } indexBuffers[];
 layout(set = 0, binding = 3) uniform sampler2D albedoTextures[];
+layout(set = 0, binding = 4, scalar) buffer MaterialBuffer { Material materialBuffers[]; };
 
 void main() {
 	//Pull vertices
@@ -26,8 +27,11 @@ void main() {
 
 	float w = 1.0 - attribs.x - attribs.y;
 
-	vec2 texCoords = v0.texCoords * w + v1.texCoords * attribs.x + v2.texCoords * attribs.y;
-	vec4 color = texture(albedoTextures[1], texCoords);
+	//Pull material
+	Material material = materialBuffers[gl_InstanceID];
 
+	vec2 texCoords = v0.texCoords * w + v1.texCoords * attribs.x + v2.texCoords * attribs.y;
+	vec4 color = texture(albedoTextures[nonuniformEXT(material.albedoIndex)], texCoords);
+	
 	payload.hitValue = color.xyz;
 }

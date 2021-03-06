@@ -93,7 +93,7 @@ int main()
 		VK_CHECK(vkCreateFence(device, &fenceCI, nullptr, &renderFinishedFence));
 	}
 
-	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/monkeys_textured.glb");
+	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/sponza.glb");
 
 	BasicRaytracingPipeline pipeline;
 	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))

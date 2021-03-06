@@ -31,6 +31,7 @@ public:
 
 	std::vector<std::pair<Image, VkSampler>> textures;
 	std::vector<Material> materials;
+	Buffer materialBuffer;
 
 	//Descriptor set
 	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;

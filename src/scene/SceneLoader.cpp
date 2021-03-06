@@ -12,14 +12,26 @@
 #include <vector>
 #include <chrono>
 
-struct BlasInstanceData
-{
-	uint32_t meshIndex;
-	uint32_t materialIndex;
-};
+#define ASSIMP_ASSERT(x) if ((x) != AI_SUCCESS) { PAUSE_AND_EXIT(-1) };
+
+#define DESC_SET_WRITE_BUFFER(e, desc, bind, arr, type)	\
+	e.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;	\
+	e.dstSet = desc;									\
+	e.dstBinding = bind;								\
+	e.descriptorCount = (uint32_t)arr.size();			\
+	e.descriptorType = type;							\
+	e.pBufferInfo = arr.data();
+
+#define DESC_SET_WRITE_IMAGE(e, desc, bind, arr, type)	\
+	e.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;	\
+	e.dstSet = desc;									\
+	e.dstBinding = bind;								\
+	e.descriptorCount = (uint32_t)arr.size();			\
+	e.descriptorType = type;							\
+	e.pImageInfo = arr.data();
 
 void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList,
-						 aiNode* node, glm::mat4 transform, std::vector<BlasInstanceData>& instanceData)
+						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices)
 {
 	glm::mat4 nodeTransform = {
 		{ node->mTransformation.a1, node->mTransformation.a2, node->mTransformation.a3, node->mTransformation.a4 },
@@ -35,17 +47,17 @@ void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerat
 	{
 		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, node->mMeshes[i]/*gl_InstanceCustomIndexEXT*/, 0xFF, 0, VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR));
 
-		instanceData.push_back({});
+		materialIndices.push_back(scene->mMeshes[node->mMeshes[i]]->mMaterialIndex);
 	}
 
 	//Traverse children
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
-		parseSceneGraphNode(device, instances, blasList, node->mChildren[i], transform, instanceData);
+		parseSceneGraphNode(device, instances, blasList, scene, node->mChildren[i], transform, materialIndices);
 	}
 }
 
-void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene& representation)
+void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene& representation, std::vector<uint32_t>& materialIndices)
 {
 	//Parse meshes
 	std::vector<BottomLevelAS> meshBLASList(scene->mNumMeshes);
@@ -132,9 +144,8 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 
 	//Parse scene graph
 	std::vector<VkAccelerationStructureInstanceKHR> accelStructInstances;
-	std::vector<BlasInstanceData> instanceData;
 
-	parseSceneGraphNode(device, accelStructInstances, meshBLASList, scene->mRootNode, glm::identity<glm::mat4>(), instanceData);
+	parseSceneGraphNode(device, accelStructInstances, meshBLASList, scene, scene->mRootNode, glm::identity<glm::mat4>(), materialIndices);
 
 	//Build TLAS
 	TopLevelAS tlas;
@@ -184,7 +195,7 @@ aiReturn loadMaterialTexture(const aiScene* scene, const aiMaterial* material, a
 			width = texture->mWidth;
 			height = texture->mHeight;
 
-			size_t textureSize = 4 * width * height;
+			size_t textureSize = 4 * (size_t)width * height;
 			output = std::shared_ptr<uint8_t>((uint8_t*)malloc(textureSize), free);
 
 			memcpy(output.get(), texture->pcData, textureSize);
@@ -198,7 +209,95 @@ aiReturn loadMaterialTexture(const aiScene* scene, const aiMaterial* material, a
 	return AI_SUCCESS;
 }
 
-void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation)
+std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkCommandBuffer commandBuffer, std::shared_ptr<uint8_t> data, int width, int height, std::vector<Buffer>& stagingBuffers)
+{
+	const RenderDevice* renderDevice = device->getRenderDevice();
+
+	VkDeviceSize imageSize = 4 * (VkDeviceSize)width * height;
+
+	//Create staging buffer and copy image data to it
+	Image texture = renderDevice->createImage2D(width, height, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	Buffer stagingBuffer = renderDevice->createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+	void* memory = nullptr;
+	VK_CHECK(vkMapMemory(renderDevice->getDevice(), stagingBuffer.memory, 0, imageSize, 0, &memory));
+
+	memcpy(memory, data.get(), imageSize);
+
+	vkUnmapMemory(renderDevice->getDevice(), stagingBuffer.memory);
+
+	//Create texture sampler
+	VkSamplerCreateInfo samplerCI = {};
+	samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerCI.magFilter = VK_FILTER_LINEAR;
+	samplerCI.minFilter = VK_FILTER_LINEAR;
+	samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCI.mipLodBias = 0.0f;
+	samplerCI.anisotropyEnable = VK_FALSE;
+	samplerCI.maxAnisotropy = 1.0f;
+	samplerCI.compareEnable = VK_FALSE;
+	samplerCI.compareOp = VK_COMPARE_OP_NEVER;
+	samplerCI.minLod = 0.0f;
+	samplerCI.maxLod = 1.0f;
+	samplerCI.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	samplerCI.unnormalizedCoordinates = VK_FALSE;
+
+	VkSampler sampler;
+	VK_CHECK(vkCreateSampler(renderDevice->getDevice(), &samplerCI, nullptr, &sampler));
+
+	//Record buffer-to-image copy commands
+	VkImageMemoryBarrier imageBarrier = {};
+	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageBarrier.srcAccessMask = 0;
+	imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrier.image = texture.image;
+	imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrier.subresourceRange.baseArrayLayer = 0;
+	imageBarrier.subresourceRange.layerCount = 1;
+	imageBarrier.subresourceRange.baseMipLevel = 0;
+	imageBarrier.subresourceRange.levelCount = 1;
+
+	vkCmdPipelineBarrier(commandBuffer,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+	VkBufferImageCopy region = {};
+	region.bufferOffset = 0;
+	region.bufferRowLength = 0;
+	region.bufferImageHeight = 0;
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.baseArrayLayer = 0;
+	region.imageSubresource.layerCount = 1;
+	region.imageSubresource.mipLevel = 0;
+	region.imageOffset = { 0, 0, 0 };
+	region.imageExtent = { (uint32_t)width, (uint32_t)height, 1 };
+
+	vkCmdCopyBufferToImage(commandBuffer, stagingBuffer.buffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+	imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	imageBarrier.dstAccessMask = 0;
+	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+	vkCmdPipelineBarrier(commandBuffer,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+	stagingBuffers.push_back(stagingBuffer);
+
+	return std::make_pair(texture, sampler);
+}
+
+void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation, const std::vector<uint32_t>& materialIndices)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
@@ -206,107 +305,46 @@ void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& 
 
 	device->getRenderDevice()->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
 	{
+		//Load materials
 		for (unsigned int i = 0; i < scene->mNumMaterials; ++i)
 		{
-			//Load image data and 
 			int width;
 			int height;
 			std::shared_ptr<uint8_t> albedoData = nullptr;
 
-			if (loadMaterialTexture(scene, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height) != AI_SUCCESS)
-			{
-				PAUSE_AND_EXIT(-1);
-			}
-
-			VkDeviceSize imageSize = 4 * (VkDeviceSize)width * height;
-
-			Buffer stagingBuffer = renderDevice->createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-			void* memory = nullptr;
-			VK_CHECK(vkMapMemory(renderDevice->getDevice(), stagingBuffer.memory, 0, imageSize, 0, &memory));
-
-			memcpy(memory, albedoData.get(), imageSize);
-
-			vkUnmapMemory(renderDevice->getDevice(), stagingBuffer.memory);
-
-			stagingBuffers.push_back(stagingBuffer);
-
-			Image albedoTexture = renderDevice->createImage2D(width, height, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-			//Create texture sampler
-			VkSamplerCreateInfo samplerCI = {};
-			samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-			samplerCI.magFilter = VK_FILTER_LINEAR;
-			samplerCI.minFilter = VK_FILTER_LINEAR;
-			samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-			samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			samplerCI.mipLodBias = 0.0f;
-			samplerCI.anisotropyEnable = VK_FALSE;
-			samplerCI.maxAnisotropy = 1.0f;
-			samplerCI.compareEnable = VK_FALSE;
-			samplerCI.compareOp = VK_COMPARE_OP_NEVER;
-			samplerCI.minLod = 0.0f;
-			samplerCI.maxLod = 1.0f;
-			samplerCI.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-			samplerCI.unnormalizedCoordinates = VK_FALSE;
-
-			VkSampler albedoSampler;
-			VK_CHECK(vkCreateSampler(renderDevice->getDevice(), &samplerCI, nullptr, &albedoSampler));
-
-			//Record buffer-to-image copy commands
-			VkImageMemoryBarrier imageBarrier = {};
-			imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			imageBarrier.srcAccessMask = 0;
-			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-			imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageBarrier.image = albedoTexture.image;
-			imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			imageBarrier.subresourceRange.baseArrayLayer = 0;
-			imageBarrier.subresourceRange.layerCount = 1;
-			imageBarrier.subresourceRange.baseMipLevel = 0;
-			imageBarrier.subresourceRange.levelCount = 1;
-
-			vkCmdPipelineBarrier(commandBuffers[0],
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-				0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-
-			VkBufferImageCopy region = {};
-			region.bufferOffset = 0;
-			region.bufferRowLength = 0;
-			region.bufferImageHeight = 0;
-			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			region.imageSubresource.baseArrayLayer = 0;
-			region.imageSubresource.layerCount = 1;
-			region.imageSubresource.mipLevel = 0;
-			region.imageOffset = { 0, 0, 0 };
-			region.imageExtent = { (uint32_t)width, (uint32_t)height, 1 };
-
-			vkCmdCopyBufferToImage(commandBuffers[0], stagingBuffer.buffer, albedoTexture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			imageBarrier.dstAccessMask = 0;
-			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-			vkCmdPipelineBarrier(commandBuffers[0],
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-				0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-
-			//Add material to scene
 			Material material;
 
+			//Load albedo texture
+			ASSIMP_ASSERT(loadMaterialTexture(scene, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height));
+
 			material.albedoIndex = (uint32_t)representation.textures.size();
-			representation.textures.push_back(std::make_pair(albedoTexture, albedoSampler));
+			representation.textures.push_back(uploadTexture(device, commandBuffers[0], albedoData, width, height, stagingBuffers));
 
 			representation.materials.push_back(material);
 		}
+
+		//Write material data
+		VkDeviceSize materialBufferSize = (VkDeviceSize)materialIndices.size() * sizeof(Material);
+
+		representation.materialBuffer = renderDevice->createBuffer(materialBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		Buffer stagingBuffer = renderDevice->createBuffer(materialBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+		Material* memory = nullptr;
+		VK_CHECK(vkMapMemory(renderDevice->getDevice(), stagingBuffer.memory, 0, materialBufferSize, 0, (void**)&memory));
+
+		for (size_t i = 0; i < materialIndices.size(); ++i)
+		{
+			const Material& material = representation.materials[materialIndices[i]];
+
+			memory[i].albedoIndex = material.albedoIndex;
+		}
+
+		vkUnmapMemory(renderDevice->getDevice(), stagingBuffer.memory);
+
+		VkBufferCopy region = { 0, 0, materialBufferSize };
+		vkCmdCopyBuffer(commandBuffers[0], stagingBuffer.buffer, representation.materialBuffer.buffer, 1, &region);
+
+		stagingBuffers.push_back(stagingBuffer);
 	});
 
 	for (size_t i = 0; i < stagingBuffers.size(); ++i)
@@ -315,7 +353,7 @@ void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& 
 	}
 }
 
-void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& scene)
+void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& scene, const std::vector<uint32_t>& materialIndices)
 {
 	VkDevice device = raytracingDevice->getRenderDevice()->getDevice();
 
@@ -325,6 +363,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
 		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
 		{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.materials.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr }
 	};
 
 	VkDescriptorSetLayoutCreateInfo layoutCI = {};
@@ -337,7 +376,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	//Create descriptor pool
 	VkDescriptorPoolSize descPoolSizes[] = {
 		{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 * (uint32_t)scene.meshBuffers.size() },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 * (uint32_t)scene.meshBuffers.size() + 1 },
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.materials.size() }
 	};
 
@@ -358,7 +397,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &scene.descriptorSet));
 
 	//Update scene descriptor
-	VkWriteDescriptorSet setWrites[4] = {};
+	VkWriteDescriptorSet setWrites[5] = {};
 
 	//Write TLAS (binding = 0)
 	VkAccelerationStructureKHR tlas = scene.tlas.get();
@@ -380,36 +419,31 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexSetWrites.begin(), [](const MeshBuffers& val)
 		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.vertexOffset, val.vertexSize }; });
 
-	setWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrites[1].dstSet = scene.descriptorSet;
-	setWrites[1].dstBinding = 1;
-	setWrites[1].descriptorCount = (uint32_t)vertexSetWrites.size();
-	setWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	setWrites[1].pBufferInfo = vertexSetWrites.data();
+	DESC_SET_WRITE_BUFFER(setWrites[1], scene.descriptorSet, 1, vertexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write index buffers (binding = 2)
 	std::vector<VkDescriptorBufferInfo> indexSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), indexSetWrites.begin(), [](const MeshBuffers& val)
 		{ return VkDescriptorBufferInfo{ val.indexBuffer.buffer, val.indexOffset, val.indexSize }; });
 
-	setWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrites[2].dstSet = scene.descriptorSet;
-	setWrites[2].dstBinding = 2;
-	setWrites[2].descriptorCount = (uint32_t)indexSetWrites.size();
-	setWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	setWrites[2].pBufferInfo = indexSetWrites.data();
+	DESC_SET_WRITE_BUFFER(setWrites[2], scene.descriptorSet, 2, indexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write textures (binding = 3)
 	std::vector<VkDescriptorImageInfo> imageSetWrites(scene.materials.size());
 	std::transform(scene.textures.begin(), scene.textures.end(), imageSetWrites.begin(), [](const std::pair<Image, VkSampler>& texture)
 		{ return VkDescriptorImageInfo{ texture.second, texture.first.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; });
 
-	setWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrites[3].dstSet = scene.descriptorSet;
-	setWrites[3].dstBinding = 3;
-	setWrites[3].descriptorCount = (uint32_t)imageSetWrites.size();
-	setWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	setWrites[3].pImageInfo = imageSetWrites.data();
+	DESC_SET_WRITE_IMAGE(setWrites[3], scene.descriptorSet, 3, imageSetWrites, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+	//Write material buffer (binding = 4)
+	VkDescriptorBufferInfo materialSetWrite = { scene.materialBuffer.buffer, 0, (VkDeviceSize)materialIndices.size() * sizeof(Material) };
+
+	setWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	setWrites[4].dstSet = scene.descriptorSet;
+	setWrites[4].dstBinding = 4;
+	setWrites[4].descriptorCount = 1;
+	setWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	setWrites[4].pBufferInfo = &materialSetWrite;
 
 	vkUpdateDescriptorSets(device, sizeof(setWrites) / sizeof(setWrites[0]), setWrites, 0, nullptr);
 }
@@ -422,7 +456,7 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	auto start = std::chrono::high_resolution_clock::now();
 
 	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality);
+	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_FlipUVs);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;
@@ -430,14 +464,16 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	std::shared_ptr<Scene> representation = std::make_shared<Scene>();
 	representation->device = device;
 
+	std::vector<uint32_t> materialIndices;
+
 	//Load scene graph (meshes)
-	loadSceneGraph(device, scene, *representation);
+	loadSceneGraph(device, scene, *representation, materialIndices);
 
 	//Load materials
-	loadMaterials(device, scene, *representation);
+	loadMaterials(device, scene, *representation, materialIndices);
 
 	//Create scene descriptor sets
-	createSceneDescriptorSets(device, *representation);
+	createSceneDescriptorSets(device, *representation, materialIndices);
 
 	importer.FreeScene();
 	
@@ -470,6 +506,8 @@ Scene::~Scene()
 
 		vkDestroySampler(deviceHandle, texture.second, nullptr);
 	}
+
+	device->getRenderDevice()->destroyBuffer(materialBuffer);
 
 	//Destroy descriptors
 	if (descriptorSetLayout != VK_NULL_HANDLE)

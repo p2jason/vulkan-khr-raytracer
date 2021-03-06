@@ -19,10 +19,10 @@ void main() {
 		rUV.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
 		rUV.y *= -1;
 
-		direction = normalize(vec3(rUV, -1.0));
+		direction = normalize(vec3(rUV, -1.0).zyx);
 	}
 
-	vec3 origin = vec3(0, 1, 10);
+	vec3 origin = vec3(0, 6, 0);
 
 	uint rayFlags = gl_RayFlagsOpaqueEXT;
 	float tMin = 0.01;
