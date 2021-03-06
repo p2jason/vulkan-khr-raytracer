@@ -110,9 +110,6 @@ std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(Buffer
 	geometryInfo->geometryArray.push_back(geometry);
 	geometryInfo->rangeInfoArray.push_back(rangeInfo);
 
-	geometryInfo->vertexBuffer = vertexBuffer;
-	geometryInfo->indexBuffer = indexBuffer;
-
 	return geometryInfo;
 }
 

@@ -96,6 +96,10 @@ set(ENABLE_HLSL OFF CACHE BOOL "")
 
 add_subdirectory(third_party/glslang)
 
+# Setup STB
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE "${PROJECT_SOURCE_DIR}/third_party/stb/")
+
 # Setup sources
 configure_file(src/ProjectBase.h.in generated_headers/ProjectBase.h)
 
@@ -112,7 +116,7 @@ target_link_libraries(${PROJECT_NAME} volk)
 target_link_libraries(${PROJECT_NAME} assimp::assimp)
 target_link_libraries(${PROJECT_NAME} glslang)
 target_link_libraries(${PROJECT_NAME} SPIRV)
-
+target_link_libraries(${PROJECT_NAME} stb)
 
 target_include_directories(${PROJECT_NAME} PUBLIC src build/generated_headers)
 

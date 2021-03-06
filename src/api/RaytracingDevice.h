@@ -19,9 +19,6 @@ struct RaytracingDeviceFeatures
 
 struct BLASGeometryInfo
 {
-	Buffer vertexBuffer;
-	Buffer indexBuffer;
-
 	std::vector<VkAccelerationStructureGeometryKHR> geometryArray;
 	std::vector<VkAccelerationStructureBuildRangeInfoKHR> rangeInfoArray;
 };
