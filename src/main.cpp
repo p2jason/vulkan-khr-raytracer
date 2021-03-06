@@ -18,6 +18,8 @@
 
 #include <glm/glm.hpp>
 
+#include <glm/gtc/quaternion.hpp>
+
 int main()
 {
 	Window window;
@@ -102,6 +104,7 @@ int main()
 	}
 
 	pipeline.createRenderTarget(2560, 1440);
+	pipeline.setCameraData(glm::vec3(0, 6, 0), glm::angleAxis(glm::radians(90.0f), glm::vec3(0, 1, 0)));
 
 	while (!window.isCloseRequested())
 	{

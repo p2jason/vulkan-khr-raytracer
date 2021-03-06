@@ -2,10 +2,21 @@
 
 #include "Resources.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <glm/gtx/quaternion.hpp>
+
+struct CameraData
+{
+	glm::mat3 viewMatrix;
+	glm::vec3 position;
+};
+
 bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 	
+	//Load pipeline shaders
 	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rgen"));
 	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rmiss"));
 	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rchit"));
@@ -21,7 +32,8 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {
-		{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr }
+		{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr },
+		{ 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr }
 	};
 
 	VkDescriptorSetLayoutCreateInfo descSetLayoutCI = {};
@@ -34,7 +46,8 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 
 	//Create descriptor pool and allocate descriptor sets
 	VkDescriptorPoolSize descPoolSizes[] = {
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
 	};
 
 	VkDescriptorPoolCreateInfo descPoolCI = {};
@@ -52,6 +65,25 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 	allocInfo.pSetLayouts = &m_descSetLayout;
 	
 	VK_CHECK(vkAllocateDescriptorSets(renderDevice->getDevice(), &allocInfo, &m_descriptorSet));
+
+	//Create camera data buffer
+	m_cameraBuffer = renderDevice->createBuffer(sizeof(CameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+	vkMapMemory(renderDevice->getDevice(), m_cameraBuffer.memory, 0, sizeof(CameraData), 0, &m_cameraData);
+
+	VkDescriptorBufferInfo bufferInfo = {};
+	bufferInfo.buffer = m_cameraBuffer.buffer;
+	bufferInfo.offset = 0;
+	bufferInfo.range = sizeof(CameraData);
+
+	VkWriteDescriptorSet setWrite = {};
+	setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	setWrite.dstSet = m_descriptorSet;
+	setWrite.dstBinding = 1;
+	setWrite.descriptorCount = 1;
+	setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	setWrite.pBufferInfo = &bufferInfo;
+
+	vkUpdateDescriptorSets(m_device->getRenderDevice()->getDevice(), 1, &setWrite, 0, nullptr);
 
 	return true;
 }
@@ -77,11 +109,32 @@ void BasicRaytracingPipeline::createRenderTarget(int width, int height)
 	setWrite.pImageInfo = &imageInfo;
 
 	vkUpdateDescriptorSets(m_device->getRenderDevice()->getDevice(), 1, &setWrite, 0, nullptr);
+
+	notifyCameraChange();
 }
 
 void BasicRaytracingPipeline::destroyRenderTarget()
 {
 	m_device->getRenderDevice()->destroyImage(m_renderTarget);
+}
+
+void BasicRaytracingPipeline::notifyCameraChange()
+{
+	float tanHalfFOV = tan(m_fov / 2.0f);
+	float aspectRatio = (float)m_width / m_height;
+
+	glm::mat3 projectionMatrix(glm::vec3(2.0f, 0.0f, 0.0f),
+							   glm::vec3(0.0f, 2.0f, 0.0f),
+							   glm::vec3(-1.0f, -1.0f, 1.0f));
+	
+	projectionMatrix = glm::mat3(glm::vec3(tanHalfFOV * aspectRatio, 0.0f, 0.0f),
+								 glm::vec3(0.0f, -tanHalfFOV, 0.0f),
+								 glm::vec3(0.0f, 0.0f, 1.0f)) * projectionMatrix;
+
+	projectionMatrix = glm::toMat3(m_cameraRotation) * projectionMatrix;
+	
+	((CameraData*)m_cameraData)->viewMatrix = projectionMatrix;
+	((CameraData*)m_cameraData)->position = m_cameraPosition;
 }
 
 void BasicRaytracingPipeline::clean(const RaytracingDevice* raytracingDevice)
@@ -90,6 +143,9 @@ void BasicRaytracingPipeline::clean(const RaytracingDevice* raytracingDevice)
 
 	vkDestroyDescriptorPool(device, m_descriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(device, m_descSetLayout, nullptr);
+
+	vkUnmapMemory(device, m_cameraBuffer.memory);
+	raytracingDevice->getRenderDevice()->destroyBuffer(m_cameraBuffer);
 }
 
 void BasicRaytracingPipeline::bind(VkCommandBuffer commandBuffer)

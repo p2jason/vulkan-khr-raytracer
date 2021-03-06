@@ -9,9 +9,14 @@ private:
 	VkDescriptorSetLayout m_descSetLayout = VK_NULL_HANDLE;
 	VkDescriptorSet m_descriptorSet = VK_NULL_HANDLE;
 
+	Buffer m_cameraBuffer;
+	void* m_cameraData = nullptr;
+
 	Image m_renderTarget = {};
-	int m_width = 0;
-	int m_height = 0;
+	int m_width = 1;
+	int m_height = 1;
+
+	float m_fov = 70.0f;
 
 	bool m_renderTargetInitialized = false;
 private:
@@ -19,6 +24,8 @@ private:
 	void clean(const RaytracingDevice* device) override;
 
 	void bind(VkCommandBuffer commandBuffer) override;
+
+	void notifyCameraChange() override;
 public:
 	void createRenderTarget(int width, int height);
 	void destroyRenderTarget();

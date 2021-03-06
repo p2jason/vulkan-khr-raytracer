@@ -4,6 +4,8 @@
 
 #include "scene/SceneLoader.h"
 
+#include <glm/gtc/quaternion.hpp>
+
 #include <string>
 
 struct RTPipelineInfo
@@ -27,7 +29,7 @@ private:
 
 	uint32_t m_sbtHandleSize = 0;
 	uint32_t m_sbtHandleAlignedSize = 0;
-	uint32_t m_sbtNumEntries = 0;
+	uint32_t m_sbtNumEntries = 0; 
 
 	std::shared_ptr<Scene> m_scene = nullptr;
 protected:
@@ -36,12 +38,17 @@ protected:
 
 	Buffer m_sbtBuffer;
 
+	glm::vec3 m_cameraPosition;
+	glm::quat m_cameraRotation;
+
 	const RaytracingDevice* m_device = nullptr;
 protected:
 	virtual bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo) = 0;
 	virtual void clean(const RaytracingDevice* device) {}
 
 	virtual void bind(VkCommandBuffer commandBuffer) {}
+
+	virtual void notifyCameraChange() {}
 public:
 	bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene);
 	void destroy();
@@ -50,6 +57,20 @@ public:
 
 	virtual Image getRenderTarget() const = 0;
 	virtual glm::ivec2 getRenderTargetSize() const = 0;
+
+	inline glm::vec3 getCameraPosition() const { return m_cameraPosition; }
+	inline glm::quat getCameraRotation() const { return m_cameraRotation; }
+
+	inline void setCameraPosition(glm::vec3 position) { m_cameraPosition = position; notifyCameraChange(); }
+	inline void setCameraRotation(glm::quat rotation) { m_cameraRotation = rotation; notifyCameraChange(); }
+
+	inline void setCameraData(glm::vec3 position, glm::quat rotation)
+	{
+		m_cameraPosition = position;
+		m_cameraRotation = rotation;
+
+		notifyCameraChange();
+	}
 
 	inline VkPipeline getPipeline() const { return m_pipeline; }
 };
