@@ -219,7 +219,7 @@ void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
 			}
 
 			VkDeviceSize compactSize = 0;
-			VK_CHECK(vkGetQueryPoolResults(m_renderDevice->getDevice(), queryPool, 0, 1, sizeof(VkDeviceSize), &compactSize, sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT));
+			VK_CHECK(vkGetQueryPoolResults(m_renderDevice->getDevice(), queryPool, i, 1, sizeof(VkDeviceSize), &compactSize, sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT));
 
 			assert(compactSize != (VkDeviceSize)-1);
 
@@ -250,8 +250,8 @@ void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
 
 	std::cout << "Finished!" << std::endl;
 	std::cout << "    -Total original size: " << (totalOriginalSize / 1024.0f) << "KB" << std::endl;
-	std::cout << "    -Total compact size: " << (totalCompactSize / 1024.0f) << "KB" << std::endl;
-	std::cout << "    -Compaction ratio: " << (float)((100.0 * totalCompactSize) / totalOriginalSize) << "%" << std::endl;;
+	std::cout << "    -Total compact size:  " << (totalCompactSize / 1024.0f) << "KB" << std::endl;
+	std::cout << "    -Compaction ratio:    " << (float)((100.0 * totalCompactSize) / totalOriginalSize) << "%" << std::endl;;
 
 	//Destroy resources
 	for (int i = 0; i < (int)blasList.size(); ++i)
