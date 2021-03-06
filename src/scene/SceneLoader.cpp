@@ -12,23 +12,29 @@
 #include <vector>
 #include <chrono>
 
-#define ASSIMP_ASSERT(x) if ((x) != AI_SUCCESS) { PAUSE_AND_EXIT(-1) };
-
 #define DESC_SET_WRITE_BUFFER(e, desc, bind, arr, type)	\
-	e.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;	\
-	e.dstSet = desc;									\
-	e.dstBinding = bind;								\
-	e.descriptorCount = (uint32_t)arr.size();			\
-	e.descriptorType = type;							\
-	e.pBufferInfo = arr.data();
+if (arr.size() > 0) {									\
+	VkWriteDescriptorSet inf = {};						\
+	inf.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;	\
+	inf.dstSet = desc;									\
+	inf.dstBinding = bind;								\
+	inf.descriptorCount = (uint32_t)arr.size();			\
+	inf.descriptorType = type;							\
+	inf.pBufferInfo = arr.data();						\
+	e.push_back(inf);									\
+}
 
 #define DESC_SET_WRITE_IMAGE(e, desc, bind, arr, type)	\
-	e.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;	\
-	e.dstSet = desc;									\
-	e.dstBinding = bind;								\
-	e.descriptorCount = (uint32_t)arr.size();			\
-	e.descriptorType = type;							\
-	e.pImageInfo = arr.data();
+if (arr.size() > 0) {									\
+	VkWriteDescriptorSet inf = {};						\
+	inf.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;	\
+	inf.dstSet = desc;									\
+	inf.dstBinding = bind;								\
+	inf.descriptorCount = (uint32_t)arr.size();			\
+	inf.descriptorType = type;							\
+	inf.pImageInfo = arr.data();						\
+	e.push_back(inf);									\
+}
 
 void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList,
 						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices)
@@ -157,16 +163,14 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	representation.tlas = std::move(tlas);
 }
 
-aiReturn loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTextureType textureType, int index, std::shared_ptr<uint8_t>& output, int& width, int& height)
+bool loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTextureType textureType, int index, std::shared_ptr<uint8_t>& output, int& width, int& height)
 {
-	aiReturn error = AI_SUCCESS;
-
 	//Get texture path
 	aiString name;
-	if ((error = material->Get(AI_MATKEY_TEXTURE(textureType, index), name)) != AI_SUCCESS)
+	if (material->Get(AI_MATKEY_TEXTURE(textureType, index), name) != AI_SUCCESS)
 	{
-		//TODO: Support materials that don't use textures
-		return error;
+		//Material doesn't have the texture requested
+		return false;
 	}
 
 	//TODO: Load duplicate textures only once
@@ -185,7 +189,7 @@ aiReturn loadMaterialTexture(const aiScene* scene, const aiMaterial* material, a
 			if (!imageMemory)
 			{
 				std::cerr << "Unable to load texture (format='" << texture->achFormatHint << "', index=" << index << ") from material '" << material->GetName().C_Str() <<"'" << std::endl;
-				return AI_FAILURE;//TODO: Load a blank texture instead of crashing
+				return false;
 			}
 
 			output = std::shared_ptr<uint8_t>((uint8_t*)imageMemory, stbi_image_free);
@@ -206,7 +210,7 @@ aiReturn loadMaterialTexture(const aiScene* scene, const aiMaterial* material, a
 		assert(false);//TODO: Support non-embedded textures
 	}
 
-	return AI_SUCCESS;
+	return true;
 }
 
 std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkCommandBuffer commandBuffer, std::shared_ptr<uint8_t> data, int width, int height, std::vector<Buffer>& stagingBuffers)
@@ -315,10 +319,15 @@ void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& 
 			Material material;
 
 			//Load albedo texture
-			ASSIMP_ASSERT(loadMaterialTexture(scene, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height));
-
-			material.albedoIndex = (uint32_t)representation.textures.size();
-			representation.textures.push_back(uploadTexture(device, commandBuffers[0], albedoData, width, height, stagingBuffers));
+			if (loadMaterialTexture(scene, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height))
+			{
+				material.albedoIndex = (uint32_t)representation.textures.size();
+				representation.textures.push_back(uploadTexture(device, commandBuffers[0], albedoData, width, height, stagingBuffers));
+			}
+			else
+			{
+				material.albedoIndex = (uint32_t)-1;
+			}
 
 			representation.materials.push_back(material);
 		}
@@ -397,7 +406,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &scene.descriptorSet));
 
 	//Update scene descriptor
-	VkWriteDescriptorSet setWrites[5] = {};
+	std::vector<VkWriteDescriptorSet> setWrites;
 
 	//Write TLAS (binding = 0)
 	VkAccelerationStructureKHR tlas = scene.tlas.get();
@@ -407,45 +416,41 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	tlasSetWrite.accelerationStructureCount = 1;
 	tlasSetWrite.pAccelerationStructures = &tlas;
 
-	setWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrites[0].pNext = &tlasSetWrite;
-	setWrites[0].dstSet = scene.descriptorSet;
-	setWrites[0].dstBinding = 0;
-	setWrites[0].descriptorCount = 1;
-	setWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	setWrites.push_back({});
+	setWrites.back().sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	setWrites.back().pNext = &tlasSetWrite;
+	setWrites.back().dstSet = scene.descriptorSet;
+	setWrites.back().dstBinding = 0;
+	setWrites.back().descriptorCount = 1;
+	setWrites.back().descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
 	//Write vertex buffers (binding = 1)
 	std::vector<VkDescriptorBufferInfo> vertexSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexSetWrites.begin(), [](const MeshBuffers& val)
 		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.vertexOffset, val.vertexSize }; });
 
-	DESC_SET_WRITE_BUFFER(setWrites[1], scene.descriptorSet, 1, vertexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 1, vertexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write index buffers (binding = 2)
 	std::vector<VkDescriptorBufferInfo> indexSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), indexSetWrites.begin(), [](const MeshBuffers& val)
 		{ return VkDescriptorBufferInfo{ val.indexBuffer.buffer, val.indexOffset, val.indexSize }; });
 
-	DESC_SET_WRITE_BUFFER(setWrites[2], scene.descriptorSet, 2, indexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 2, indexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write textures (binding = 3)
-	std::vector<VkDescriptorImageInfo> imageSetWrites(scene.materials.size());
+	std::vector<VkDescriptorImageInfo> imageSetWrites(scene.textures.size());
 	std::transform(scene.textures.begin(), scene.textures.end(), imageSetWrites.begin(), [](const std::pair<Image, VkSampler>& texture)
 		{ return VkDescriptorImageInfo{ texture.second, texture.first.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; });
 
-	DESC_SET_WRITE_IMAGE(setWrites[3], scene.descriptorSet, 3, imageSetWrites, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	DESC_SET_WRITE_IMAGE(setWrites, scene.descriptorSet, 3, imageSetWrites, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 	//Write material buffer (binding = 4)
-	VkDescriptorBufferInfo materialSetWrite = { scene.materialBuffer.buffer, 0, (VkDeviceSize)materialIndices.size() * sizeof(Material) };
+	std::vector<VkDescriptorBufferInfo> materialSetWrites = { { scene.materialBuffer.buffer, 0, (VkDeviceSize)materialIndices.size() * sizeof(Material) } };
 
-	setWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrites[4].dstSet = scene.descriptorSet;
-	setWrites[4].dstBinding = 4;
-	setWrites[4].descriptorCount = 1;
-	setWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	setWrites[4].pBufferInfo = &materialSetWrite;
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 4, materialSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-	vkUpdateDescriptorSets(device, sizeof(setWrites) / sizeof(setWrites[0]), setWrites, 0, nullptr);
+	vkUpdateDescriptorSets(device, (uint32_t)setWrites.size(), setWrites.data(), 0, nullptr);
 }
 
 std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, const char* scenePath)

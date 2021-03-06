@@ -27,11 +27,16 @@ void main() {
 
 	float w = 1.0 - attribs.x - attribs.y;
 
+	vec2 texCoords = v0.texCoords * w + v1.texCoords * attribs.x + v2.texCoords * attribs.y;
+
 	//Pull material
 	Material material = materialBuffers[gl_InstanceID];
 
-	vec2 texCoords = v0.texCoords * w + v1.texCoords * attribs.x + v2.texCoords * attribs.y;
-	vec4 color = texture(albedoTextures[nonuniformEXT(material.albedoIndex)], texCoords);
+	vec4 color = vec4(1.0, 0.0, 1.0, 1.0);
+	
+	if (material.albedoIndex != -1) {
+		color = texture(albedoTextures[nonuniformEXT(material.albedoIndex)], texCoords);
+	}
 	
 	payload.hitValue = color.xyz;
 }
