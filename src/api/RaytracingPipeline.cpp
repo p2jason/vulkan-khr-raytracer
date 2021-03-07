@@ -113,7 +113,7 @@ bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipeli
 		shaderGroups.push_back(shaderGroupCI);
 	}
 
-	m_numHitGroups = (uint32_t)shaderGroups.size() - m_numMissShaders;
+	m_numHitGroups = (uint32_t)shaderGroups.size() - (m_numMissShaders + m_numRaygenShaders);
 
 	//Create raytracing pipeline
 	VkRayTracingPipelineCreateInfoKHR rtPipelineCI = {};

@@ -23,7 +23,7 @@
 int main()
 {
 	Window window;
-	if (!window.init("Vulkan KHR Raytracer", 1280, 720))
+	if (!window.init("Vulkan KHR Raytracer", 2560, 1440))
 	{
 		std::cin.get();
 		return 0;

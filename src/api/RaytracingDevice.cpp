@@ -81,7 +81,7 @@ RaytracingDeviceFeatures* RaytracingDevice::init(RenderDevice* renderDevice)
 	return features;
 }
 
-std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, unsigned int indexCount, VkDeviceOrHostAddressConstKHR transformData) const
+std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, unsigned int indexCount, VkDeviceOrHostAddressConstKHR transformData, VkGeometryFlagsKHR flags) const
 {
 	VkDeviceAddress vertexAddress = m_renderDevice->getBufferAddress(vertexBuffer.buffer);
 	VkDeviceAddress indexAddress = m_renderDevice->getBufferAddress(indexBuffer.buffer);
@@ -97,7 +97,7 @@ std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(Buffer
 	geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
 	geometry.geometry.triangles.indexData.deviceAddress = indexAddress;
 	geometry.geometry.triangles.transformData = transformData;
-	geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geometry.flags = flags;
 
 	VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
 	rangeInfo.firstVertex = 0;
