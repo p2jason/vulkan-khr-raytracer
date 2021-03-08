@@ -1,5 +1,6 @@
 #pragma once
 
+#include "api/Window.h"
 #include "api/RenderDevice.h"
 #include "api/Swapchain.h"
 
@@ -30,7 +31,6 @@ private:
 	const RenderDevice* m_device = nullptr;
 private:
 	void createRenderPass();
-
 	void createPipeline();
 
 	void createSwapchain();
@@ -38,13 +38,18 @@ private:
 	
 	void createFramebuffers();
 	void destroyFramebuffers();
+
+	void initImGui(const Window& window);
+	void destroyImGui();
 public:
 	ScenePresenter() {}
 
-	void init(const RenderDevice* device, int initialWidth, int initialHeight);
+	void init(const RenderDevice* device, const Window& window, int initialWidth, int initialHeight);
 	void destroy();
 
 	void resize(int width, int height);
+
+	void drawUI();
 
 	inline uint32_t acquireNextImage(VkSemaphore semaphore) const { return m_swapchain.acquireNextImage(semaphore); }
 	inline void present(VkQueue queue, uint32_t imageIndex, const std::vector<VkSemaphore>& waitSemaphores) const { m_swapchain.present(queue, imageIndex, waitSemaphores); }

@@ -26,4 +26,6 @@ public:
 
 	VkSurfaceKHR createSurface(VkInstance instance) const;
 	const char** getRequiredExtensions(uint32_t& extensionCount) const;
+
+	inline GLFWwindow* getHandle() const { return m_window; }
 };

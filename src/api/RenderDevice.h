@@ -75,6 +75,8 @@ public:
 	inline VkDevice getDevice() const { return m_device; }
 	inline VkQueue getQueue() const { return m_queue; }
 
+	inline uint32_t getQueueFamily() const { return m_queueFamilyIndex; }
+
 	inline VkSurfaceKHR getSurface() const { return m_surface; }
 	inline VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
 };

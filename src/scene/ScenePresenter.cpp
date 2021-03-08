@@ -1,5 +1,10 @@
 #include "ScenePresenter.h"
 
+#include <imgui.h>
+#include <imgui_internal.h>
+#include <backends/imgui_impl_vulkan.h>
+#include <backends/imgui_impl_glfw.h>
+
 const char* VERTEX_SHADER = R"(#version 450
 
 layout(location = 0) out vec2 texCoord;
@@ -118,15 +123,28 @@ void ScenePresenter::createPipeline()
 
 	VK_CHECK(vkCreateDescriptorSetLayout(m_device->getDevice(), &descSetLayoutCI, nullptr, &m_descLayout));
 
-	VkDescriptorPoolSize poolSizes[] = {
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
+	VkDescriptorPoolSize descPoolSizes[] = {
+		{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
 	};
+
+	uint32_t sizeCount = (uint32_t)(sizeof(descPoolSizes) / sizeof(descPoolSizes[0]));
 
 	VkDescriptorPoolCreateInfo descPoolCI = {};
 	descPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	descPoolCI.poolSizeCount = sizeof(poolSizes) / sizeof(poolSizes[0]);
-	descPoolCI.pPoolSizes = poolSizes;
-	descPoolCI.maxSets = 1;
+	descPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	descPoolCI.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	descPoolCI.poolSizeCount = sizeCount;
+	descPoolCI.pPoolSizes = descPoolSizes;
+	descPoolCI.maxSets = 1000 * sizeCount;
 
 	VK_CHECK(vkCreateDescriptorPool(m_device->getDevice(), &descPoolCI, nullptr, &m_descriptorPool));
 
@@ -298,6 +316,75 @@ void ScenePresenter::destroyFramebuffers()
 	m_framebuffers.clear();
 }
 
+PFN_vkVoidFunction imguiLoadVulkanFunc(const char* functionName, void* userData)
+{
+	const RenderDevice* device = (const RenderDevice*)userData;
+
+	PFN_vkVoidFunction func = vkGetDeviceProcAddr(device->getDevice(), functionName);
+	return func ? func : vkGetInstanceProcAddr(device->getInstance(), functionName);
+}
+
+void ScenePresenter::initImGui(const Window& window)
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+	ImGui::StyleColorsDark();
+
+	if (!ImGui_ImplVulkan_LoadFunctions(&imguiLoadVulkanFunc, (void*)m_device))
+	{
+		std::cerr << "Failed to create ImGui" << std::endl;
+		PAUSE_AND_EXIT(-1);
+	}
+
+	ImGui_ImplGlfw_InitForVulkan(window.getHandle(), true);
+	ImGui_ImplVulkan_InitInfo initInfo = {};
+	initInfo.Instance = m_device->getInstance();
+	initInfo.PhysicalDevice = m_device->getPhysicalDevice();
+	initInfo.Device = m_device->getDevice();
+	initInfo.QueueFamily = m_device->getQueueFamily();
+	initInfo.Queue = m_device->getQueue();
+	initInfo.PipelineCache = VK_NULL_HANDLE;
+	initInfo.DescriptorPool = m_descriptorPool;
+	initInfo.Subpass = 0;
+	initInfo.MinImageCount = m_surfaceProfile.capabilties.minImageCount;
+	initInfo.ImageCount = (uint32_t)m_swapchain.getImageViews().size();
+	initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	initInfo.Allocator = nullptr;
+
+	if (!ImGui_ImplVulkan_Init(&initInfo, m_renderPass))
+	{
+		std::cerr << "Failed to create ImGui" << std::endl;
+		PAUSE_AND_EXIT(-1);
+	}
+
+	m_device->executeCommands(1, [](VkCommandBuffer* commandBuffers)
+	{
+		ImGui_ImplVulkan_CreateFontsTexture(commandBuffers[0]);
+	});
+
+	ImGui_ImplVulkan_DestroyFontUploadObjects();
+}
+
+void ScenePresenter::destroyImGui()
+{
+	ImGui_ImplVulkan_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+}
+
+void ScenePresenter::drawUI()
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	ImGui::ShowDemoWindow();
+
+	ImGui::Render();
+}
+
 void ScenePresenter::resize(int width, int height)
 {
 	m_width = width;
@@ -310,7 +397,7 @@ void ScenePresenter::resize(int width, int height)
 	createFramebuffers();
 }
 
-void ScenePresenter::init(const RenderDevice* device, int initialWidth, int initialHeight)
+void ScenePresenter::init(const RenderDevice* device, const Window& window, int initialWidth, int initialHeight)
 {
 	m_device = device;
 	m_width = initialWidth;
@@ -320,10 +407,14 @@ void ScenePresenter::init(const RenderDevice* device, int initialWidth, int init
 	createRenderPass();
 	createFramebuffers();
 	createPipeline();
+
+	initImGui(window);
 }
 
 void ScenePresenter::destroy()
 {
+	destroyImGui();
+
 	vkDestroySampler(m_device->getDevice(), m_sampler, nullptr);
 
 	vkDestroyDescriptorSetLayout(m_device->getDevice(), m_descLayout, nullptr);
@@ -336,7 +427,6 @@ void ScenePresenter::destroy()
 	destroyFramebuffers();
 	destroySwapchain();
 }
-
 
 void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingPipeline& pipeline, uint32_t imageIndex, VkRect2D renderArea, ImageState prevImageState, VkImageLayout finalLayout) const
 {
@@ -395,6 +485,8 @@ void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingP
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 	vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
 	vkCmdEndRenderPass(commandBuffer);
 

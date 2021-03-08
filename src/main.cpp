@@ -2,9 +2,6 @@
 #include <thread>
 #include <chrono>
 
-#include <volk.h>
-#include <vulkan/vulkan.hpp>
-
 #include <glm/gtx/transform.hpp>
 
 #include "api/Window.h"
@@ -61,7 +58,7 @@ int main()
 
 	delete features;
 
-	presenter.init(&renderDevice, viewportSize.x, viewportSize.y);
+	presenter.init(&renderDevice, window, viewportSize.x, viewportSize.y);
 
 	//Create command pool & buffer
 	VkDevice device = renderDevice.getDevice();
@@ -120,6 +117,8 @@ int main()
 		}
 
 		//Render
+		presenter.drawUI();
+
 		uint32_t imageIndex = presenter.acquireNextImage(imageAvailableSemaphore);
 
 		VkCommandBufferBeginInfo beginInfo = {};
