@@ -7,6 +7,7 @@
 
 #include <glm/glm.hpp>
 
+#include <vector>
 #include <cstdint>
 
 class Window
@@ -25,7 +26,7 @@ public:
 	glm::ivec2 getViewportSize() const;
 
 	VkSurfaceKHR createSurface(VkInstance instance) const;
-	const char** getRequiredExtensions(uint32_t& extensionCount) const;
+	std::vector<const char*> getRequiredExtensions() const;
 
 	inline GLFWwindow* getHandle() const { return m_window; }
 };

@@ -55,9 +55,12 @@ glm::ivec2 Window::getViewportSize() const
 	return glm::ivec2(width, height);
 }
 
-const char** Window::getRequiredExtensions(uint32_t& extensionCount) const
+std::vector<const char*> Window::getRequiredExtensions() const
 {
-	return glfwGetRequiredInstanceExtensions(&extensionCount);
+	uint32_t extensionCount = 0;
+	const char** extensions = glfwGetRequiredInstanceExtensions(&extensionCount);
+
+	return std::vector<const char*>(extensions, extensions + extensionCount);
 }
 
 VkSurfaceKHR Window::createSurface(VkInstance instance) const

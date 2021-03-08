@@ -17,6 +17,8 @@
 
 #include <glm/gtc/quaternion.hpp>
 
+std::vector<const char*> s_validationLayers({ "VK_LAYER_KHRONOS_validation" });//"VK_LAYER_LUNARG_standard_validation"
+
 int main()
 {
 	Window window;
@@ -26,39 +28,48 @@ int main()
 		return 0;
 	}
 
-	//Setup render device
 	ScenePresenter presenter;
 
-	uint32_t glfwExtensionCount = 0;
-	const char** glfwExtensions = window.getRequiredExtensions(glfwExtensionCount);
-
+	std::vector<const char*> glfwExtensions = window.getRequiredExtensions();
 	std::vector<const char*> instanceExtensions = presenter.determineInstanceExtensions();
-	instanceExtensions.insert(instanceExtensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
+	instanceExtensions.insert(instanceExtensions.end(), glfwExtensions.begin(), glfwExtensions.end());
 
-	std::vector<const char*> validationLayers({ "VK_LAYER_KHRONOS_validation" });//"VK_LAYER_LUNARG_standard_validation"
-
-	glm::ivec2 viewportSize = window.getViewportSize();
-
-	RaytracingDevice raytracingDevice;
-
-	std::vector<const char*> deviceExtensions = raytracingDevice.getRequiredExtensions();
-	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-
+	//Create render device
 	RenderDevice renderDevice;
-	renderDevice.createInstance(instanceExtensions, validationLayers, true);
+	renderDevice.createInstance(instanceExtensions, s_validationLayers, true);
 	renderDevice.createSurface(window);
 	renderDevice.choosePhysicalDevice();
 
-	RaytracingDeviceFeatures* features = raytracingDevice.init(&renderDevice);
+	//Create raytracing device
+	RaytracingDevice raytracingDevice;
 
+	std::vector<const char*> deviceExtensions = raytracingDevice.getRequiredExtensions();
 	std::vector<const char*> swapchainExtensions = presenter.determineDeviceExtensions(renderDevice.getPhysicalDevice());
 	deviceExtensions.insert(deviceExtensions.end(), swapchainExtensions.begin(), swapchainExtensions.end());
 
-	renderDevice.createLogicalDevice(deviceExtensions, validationLayers, features->pNext);
+	//Create logical device
+	RaytracingDeviceFeatures* features = raytracingDevice.init(&renderDevice);
+
+	renderDevice.createLogicalDevice(deviceExtensions, s_validationLayers, features->pNext);
 
 	delete features;
 
+	//Initialize scene presenter
+	glm::ivec2 viewportSize = window.getViewportSize();
+
 	presenter.init(&renderDevice, window, viewportSize.x, viewportSize.y);
+
+	//Load scene and created pipeline
+	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/sponza.glb");
+
+	BasicRaytracingPipeline pipeline;
+	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))
+	{
+		PAUSE_AND_EXIT(-1);
+	}
+
+	pipeline.createRenderTarget(2560, 1440);
+	pipeline.setCameraData(glm::vec3(0, 6, 0), glm::angleAxis(glm::radians(90.0f), glm::vec3(0, 1, 0)));
 
 	//Create command pool & buffer
 	VkDevice device = renderDevice.getDevice();
@@ -91,17 +102,6 @@ int main()
 		
 		VK_CHECK(vkCreateFence(device, &fenceCI, nullptr, &renderFinishedFence));
 	}
-
-	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/sponza.glb");
-
-	BasicRaytracingPipeline pipeline;
-	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))
-	{
-		PAUSE_AND_EXIT(-1);
-	}
-
-	pipeline.createRenderTarget(2560, 1440);
-	pipeline.setCameraData(glm::vec3(0, 6, 0), glm::angleAxis(glm::radians(90.0f), glm::vec3(0, 1, 0)));
 
 	while (!window.isCloseRequested())
 	{

@@ -22,7 +22,13 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rchit"));
 	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rahit"));
 
-	if (raygenModule == VK_NULL_HANDLE || missModule == VK_NULL_HANDLE || closestModule == VK_NULL_HANDLE || anyhitModule == VK_NULL_HANDLE)
+	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("shaders/rtsimple/shadow.rmiss"));
+
+	if (raygenModule == VK_NULL_HANDLE ||
+		missModule == VK_NULL_HANDLE ||
+		closestModule == VK_NULL_HANDLE ||
+		anyhitModule == VK_NULL_HANDLE ||
+		shadowMissModule == VK_NULL_HANDLE)
 	{
 		return false;
 	}
@@ -30,6 +36,10 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 	pipelineInfo.raygenModules.push_back(raygenModule);
 	pipelineInfo.missModules.push_back(missModule);
 	pipelineInfo.hitGroupModules.push_back({ closestModule, anyhitModule, VK_NULL_HANDLE });
+
+	pipelineInfo.missModules.push_back(shadowMissModule);
+
+	pipelineInfo.maxRecursionDepth = 2;
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {

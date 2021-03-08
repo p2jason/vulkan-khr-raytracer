@@ -368,7 +368,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding layoutBinding[] = {
-		{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr },
+		{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, nullptr },
 		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
 		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
 		{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.materials.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
