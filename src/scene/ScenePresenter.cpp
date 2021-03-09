@@ -380,7 +380,7 @@ void ScenePresenter::drawUI()
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::ShowDemoWindow();
+	
 
 	ImGui::Render();
 }

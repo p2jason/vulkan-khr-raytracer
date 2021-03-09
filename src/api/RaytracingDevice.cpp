@@ -221,7 +221,7 @@ void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
 			VkDeviceSize compactSize = 0;
 			VK_CHECK(vkGetQueryPoolResults(m_renderDevice->getDevice(), queryPool, i, 1, sizeof(VkDeviceSize), &compactSize, sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT));
 
-			assert(compactSize != (VkDeviceSize)-1);
+			assert(compactSize != (VkDeviceSize)-1 && compactSize > 0);
 
 			blasList[i].m_accelStorageBuffer = m_renderDevice->createBuffer(compactSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 

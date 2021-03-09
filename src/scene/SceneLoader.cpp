@@ -37,7 +37,7 @@ if (arr.size() > 0) {									\
 }
 
 void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList,
-						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices)
+						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices, const std::vector<bool>& isMaterialOpaque)
 {
 	glm::mat4 nodeTransform = {
 		{ node->mTransformation.a1, node->mTransformation.a2, node->mTransformation.a3, node->mTransformation.a4 },
@@ -51,23 +51,29 @@ void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerat
 	//Add BLAS instances to TLAS
 	for (unsigned int i = 0; i < node->mNumMeshes; ++i)
 	{
-		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, node->mMeshes[i]/*gl_InstanceCustomIndexEXT*/, 0xFF, 0, VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR));
+		uint32_t materialIndex = scene->mMeshes[node->mMeshes[i]]->mMaterialIndex;
+		
+		//Compute geometry flags
+		VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+		flags |= isMaterialOpaque[materialIndex] ? VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR : VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
 
-		materialIndices.push_back(scene->mMeshes[node->mMeshes[i]]->mMaterialIndex);
+		//Add instance
+		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, node->mMeshes[i]/*gl_InstanceCustomIndexEXT*/, 0xFF, 0, flags));
+		materialIndices.push_back(materialIndex);
 	}
 
 	//Traverse children
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
-		parseSceneGraphNode(device, instances, blasList, scene, node->mChildren[i], transform, materialIndices);
+		parseSceneGraphNode(device, instances, blasList, scene, node->mChildren[i], transform, materialIndices, isMaterialOpaque);
 	}
 }
 
 void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene& representation, std::vector<uint32_t>& materialIndices)
 {
 	//Parse meshes
-	std::vector<BottomLevelAS> meshBLASList(scene->mNumMeshes);
-	std::vector<Buffer> stagingBuffers(scene->mNumMeshes);
+	std::vector<BottomLevelAS> meshBLASList;
+	std::vector<Buffer> stagingBuffers;
 
 	device->getRenderDevice()->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
 	{
@@ -122,9 +128,12 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 
 			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(MeshVertex), mesh->mNumVertices, indexBuffer, mesh->mNumFaces, { 0 }, 0);
 
-			meshBLASList[i].init(device, geomertryInfo, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
+			BottomLevelAS blas;
+			blas.init(device, geomertryInfo, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
 
-			stagingBuffers[i] = stagingBuffer;
+			meshBLASList.push_back(blas);
+
+			stagingBuffers.push_back(stagingBuffer);
 
 			representation.meshBuffers.push_back({
 				vertexBuffer, 0, vertexBufferSize,
@@ -141,7 +150,7 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	});
 
 	//Free staging buffers
-	for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+	for (size_t i = 0; i < stagingBuffers.size(); ++i)
 	{
 		device->getRenderDevice()->destroyBuffer(stagingBuffers[i]);
 	}
@@ -151,7 +160,7 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	//Parse scene graph
 	std::vector<VkAccelerationStructureInstanceKHR> accelStructInstances;
 
-	parseSceneGraphNode(device, accelStructInstances, meshBLASList, scene, scene->mRootNode, glm::identity<glm::mat4>(), materialIndices);
+	parseSceneGraphNode(device, accelStructInstances, meshBLASList, scene, scene->mRootNode, glm::identity<glm::mat4>(), materialIndices, representation.isMaterialOpaque);
 
 	//Build TLAS
 	TopLevelAS tlas;
@@ -211,6 +220,24 @@ bool loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTex
 	}
 
 	return true;
+}
+
+bool checkHasAlpha(std::shared_ptr<uint8_t> output, int width, int height)
+{
+	uint32_t* pixelPointer = (uint32_t*)output.get();
+
+	for (int y = 0; y < height; ++y)
+	{
+		for (int x = 0; x < width; ++x)
+		{
+			if (((pixelPointer[y * width + x] >> 24) & 0xFF) != 0xFF)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkCommandBuffer commandBuffer, std::shared_ptr<uint8_t> data, int width, int height, std::vector<Buffer>& stagingBuffers)
@@ -301,11 +328,15 @@ std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkComm
 	return std::make_pair(texture, sampler);
 }
 
-void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation, const std::vector<uint32_t>& materialIndices)
+void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
 	std::vector<Buffer> stagingBuffers;
+
+	std::cout << "Loading materials (" << scene->mNumMaterials << ")... ";
+
+	auto start = std::chrono::high_resolution_clock::now();
 
 	device->getRenderDevice()->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
 	{
@@ -321,17 +352,39 @@ void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& 
 			//Load albedo texture
 			if (loadMaterialTexture(scene, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height))
 			{
+				representation.isMaterialOpaque.push_back(!checkHasAlpha(albedoData, width, height));
+
 				material.albedoIndex = (uint32_t)representation.textures.size();
 				representation.textures.push_back(uploadTexture(device, commandBuffers[0], albedoData, width, height, stagingBuffers));
 			}
 			else
 			{
+				representation.isMaterialOpaque.push_back(true);
+
 				material.albedoIndex = (uint32_t)-1;
 			}
 
 			representation.materials.push_back(material);
 		}
+	});
 
+	for (size_t i = 0; i < stagingBuffers.size(); ++i)
+	{
+		renderDevice->destroyBuffer(stagingBuffers[i]);
+	}
+
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;
+}
+
+void uploadMaterialMappings(const RaytracingDevice* device, Scene& representation, const std::vector<uint32_t>& materialIndices)
+{
+	const RenderDevice* renderDevice = device->getRenderDevice();
+
+	std::vector<Buffer> stagingBuffers;
+
+	device->getRenderDevice()->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
+	{
 		//Write material data
 		VkDeviceSize materialBufferSize = (VkDeviceSize)materialIndices.size() * sizeof(Material);
 
@@ -371,7 +424,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 		{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, nullptr },
 		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
 		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
-		{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.materials.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.textures.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
 		{ 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr }
 	};
 
@@ -461,24 +514,66 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	auto start = std::chrono::high_resolution_clock::now();
 
 	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_FlipUVs);
+	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_FlipUVs | aiProcess_ConvertToLeftHanded);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;
+
+	if (!scene)
+	{
+		std::cout << "Assimp Error:\n" << importer.GetErrorString() << std::endl;
+
+		return nullptr;
+	}
 
 	std::shared_ptr<Scene> representation = std::make_shared<Scene>();
 	representation->device = device;
 
 	std::vector<uint32_t> materialIndices;
 
+	//Load materials
+	loadMaterials(device, scene, *representation);
+
 	//Load scene graph (meshes)
 	loadSceneGraph(device, scene, *representation, materialIndices);
 
-	//Load materials
-	loadMaterials(device, scene, *representation, materialIndices);
+	//Upload material mapping indices
+	uploadMaterialMappings(device, *representation, materialIndices);
 
 	//Create scene descriptor sets
 	createSceneDescriptorSets(device, *representation, materialIndices);
+
+	//Load camera data
+	if (scene->HasCameras())
+	{
+		const aiCamera* camera = scene->mCameras[0];
+
+		aiNode* cameraNode = scene->mRootNode->FindNode(camera->mName.data);
+
+		aiMatrix4x4 T;
+		while (cameraNode != scene->mRootNode)
+		{
+			T = cameraNode->mTransformation * T;
+			cameraNode = cameraNode->mParent;
+		}
+
+		aiMatrix4x4 R = T;
+		R.a4 = R.b4 = R.c4 = 0.f;
+		R.d4 = 1.f;
+
+		// Transform
+		aiVector3D from = T * camera->mPosition;
+		aiVector3D forward = R * camera->mLookAt;
+		aiVector3D up = R * camera->mUp;
+
+		representation->cameraPosition = glm::vec3(from.x, from.y, from.z);
+		representation->cameraRotation = glm::quatLookAt(glm::vec3(forward.x, forward.y, forward.z), glm::vec3(up.x, up.y, up.z));
+	}
+	else
+	{
+		representation->cameraPosition = glm::vec3(0, 0, 0);
+		representation->cameraRotation = glm::quat();
+	}
 
 	importer.FreeScene();
 	

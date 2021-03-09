@@ -27,8 +27,4 @@ void main() {
 	traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 0, cameraPosition, tMin, direction, tMax, 0);
 
 	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payload.hitValue, 1.0));
-	
-	//vec2 col = (cameraMatrix * vec3(pixelUV, 1.0)).xy;
-	
-	//imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(col, 0.5, 1.0));
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <memory>
 
@@ -31,7 +32,11 @@ public:
 
 	std::vector<std::pair<Image, VkSampler>> textures;
 	std::vector<Material> materials;
+	std::vector<bool> isMaterialOpaque;
 	Buffer materialBuffer;
+
+	glm::vec3 cameraPosition;
+	glm::quat cameraRotation;
 
 	//Descriptor set
 	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;

@@ -46,7 +46,7 @@ void main() {
 	vec3 normal = v0.normal * w + v1.normal * attribs.x + v2.normal * attribs.y;
 	
     vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
-	const vec3 direction = normalize(vec3(-0.5, 1, 0.03));
+	const vec3 direction = normalize(vec3(-0.5, 1, 0.2));
 	
 	uint rayFlags = gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT;
 	float tMin = 0.01;

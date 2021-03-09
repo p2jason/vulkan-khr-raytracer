@@ -154,8 +154,8 @@ macro(ConvertToFilters curdir)
 	endforeach()
 endmacro()
 
-ConvertToFilters(src)
 ConvertToFilters(data)
+ConvertToFilters(src)
 
 if(WIN32)
 	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
