@@ -4,8 +4,9 @@
 #extension GL_EXT_scalar_block_layout : enable
 
 #include "common/common.glsl"
+#include "sampler_zoo/common.glsl"
 
-layout(location = 0) rayPayloadEXT hitPayload payload;
+layout(location = 0) rayPayloadEXT SamplerZooHitPayload payload;
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
@@ -19,6 +20,8 @@ void main() {
 	vec2 pixelUV = (vec2(gl_LaunchIDEXT.xy) + vec2(0.5)) / vec2(gl_LaunchSizeEXT.xy);
 
 	vec3 direction = normalize(cameraMatrix * vec3(pixelUV, 1.0));
+
+	white_rng_init(payload.rng, pixelUV);
 
 	uint rayFlags = gl_RayFlagsNoneEXT;
 	float tMin = 0.01;

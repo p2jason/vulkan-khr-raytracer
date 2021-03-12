@@ -216,7 +216,8 @@ bool loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTex
 	}
 	else
 	{
-		assert(false);//TODO: Support non-embedded textures
+		std::cerr << "External textures not supoported yet!" << std::endl;
+		PAUSE_AND_EXIT(-1);//TODO: Support non-embedded textures
 	}
 
 	return true;
@@ -514,7 +515,7 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	auto start = std::chrono::high_resolution_clock::now();
 
 	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_FlipUVs | aiProcess_ConvertToLeftHanded);
+	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_ConvertToLeftHanded);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;

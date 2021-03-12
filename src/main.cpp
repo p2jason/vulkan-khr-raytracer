@@ -11,7 +11,7 @@
 #include "scene/ScenePresenter.h"
 #include "scene/SceneLoader.h"
 
-#include "scene/SimpleRaytracingPipeling.h"
+#include "scene/pipelines/SamplerZooPipeline.h"
 
 #include <glm/glm.hpp>
 
@@ -22,7 +22,7 @@ std::vector<const char*> s_validationLayers({ "VK_LAYER_KHRONOS_validation" });/
 int main()
 {
 	Window window;
-	if (!window.init("Vulkan KHR Raytracer", 2560, 1440))
+	if (!window.init("Vulkan KHR Raytracer", 1920, 1080))
 	{
 		std::cin.get();
 		return 0;
@@ -60,15 +60,15 @@ int main()
 	presenter.init(&renderDevice, window, viewportSize.x, viewportSize.y);
 
 	//Load scene and created pipeline
-	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/sponza.glb");
+	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/shadow_test.glb");
 
-	BasicRaytracingPipeline pipeline;
+	SamplerZooPipeline pipeline;
 	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))
 	{
 		PAUSE_AND_EXIT(-1);
 	}
 
-	pipeline.createRenderTarget(2560, 1440);
+	pipeline.createRenderTarget(1920, 1080);
 	pipeline.setCameraData(scene->cameraPosition, scene->cameraRotation);
 
 	//Create command pool & buffer

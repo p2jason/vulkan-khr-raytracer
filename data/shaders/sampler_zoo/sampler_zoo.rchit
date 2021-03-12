@@ -4,11 +4,13 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_EXT_scalar_block_layout : enable
 
+#include "common/random.glsl"
 #include "common/common.glsl"
+#include "sampler_zoo/common.glsl"
 
 hitAttributeEXT vec2 attribs;
 
-layout(location = 0) rayPayloadInEXT hitPayload payload;
+layout(location = 0) rayPayloadInEXT SamplerZooHitPayload payload;
 layout(location = 1) rayPayloadEXT bool isShadowed;
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
@@ -29,35 +31,39 @@ void main() {
 
 	float w = 1.0 - attribs.x - attribs.y;
 
-	vec2 texCoords = v0.texCoords * w + v1.texCoords * attribs.x + v2.texCoords * attribs.y;
-
-	//Pull material
-	Material material = materialBuffers[gl_InstanceID];
-
-	vec4 color = vec4(1.0, 0.0, 1.0, 1.0);
+	vec3 normal = normalize(v0.normal * w + v1.normal * attribs.x + v2.normal * attribs.y);
+	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
 	
-	if (material.albedoIndex != -1) {
-		color = texture(albedoTextures[nonuniformEXT(material.albedoIndex)], texCoords);
+	const vec3 lightPos = vec3(0, 3, 0);
+	const float lightRadius = 1.0;
+	
+	//Compute shader coverage
+	const int numSamples = 32;
+	int hitCount = 0;
+	
+	for (int i = 0; i < numSamples; ++i) {
+		vec2 value = white_rng_generate_2d(payload.rng);
+		
+		vec3 targetPos = lightPos + lightRadius * normalizedToUnitSphere(value.x, value.y);
+		
+		//Calculate light direction and distance
+		vec3 toLight = targetPos - origin;
+		float lightDistance = length(toLight);
+		toLight = normalize(toLight);
+		
+		//Compute shadow hit
+		uint rayFlags = gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT;
+		const float tMin = 0.001;
+		
+		isShadowed = true;
+		traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 1, origin, tMin, toLight, lightDistance, 1);
+		
+		if (!isShadowed) {
+			hitCount++;
+		}
 	}
 	
-	//Test shadows
-	isShadowed = true;
+	float lightDistance = distance(lightPos, origin);
 	
-	vec3 normal = v0.normal * w + v1.normal * attribs.x + v2.normal * attribs.y;
-	
-    vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
-	const vec3 direction = normalize(vec3(-0.5, 1, 0.2));
-	
-	uint rayFlags = gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT;
-	float tMin = 0.01;
-	float tMax = 10000.0;
-	
-	traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 1, origin, tMin, direction, tMax, 1);
-	
-	if (isShadowed)
-	{
-		color *= 0.3;
-	}
-	
-	payload.hitValue = color.xyz;
+	payload.hitValue = vec3(10.0 / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(numSamples));
 }
