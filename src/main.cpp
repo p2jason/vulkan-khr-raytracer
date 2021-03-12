@@ -2,7 +2,7 @@
 #include <thread>
 #include <chrono>
 
-#include <glm/gtx/transform.hpp>
+#include "ProjectBase.h"
 
 #include "api/Window.h"
 #include "api/RenderDevice.h"
@@ -14,7 +14,7 @@
 #include "scene/pipelines/SamplerZooPipeline.h"
 
 #include <glm/glm.hpp>
-
+#include <glm/gtx/transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 std::vector<const char*> s_validationLayers({ "VK_LAYER_KHRONOS_validation" });//"VK_LAYER_LUNARG_standard_validation"
@@ -60,7 +60,8 @@ int main()
 	presenter.init(&renderDevice, window, viewportSize.x, viewportSize.y);
 
 	//Load scene and created pipeline
-	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "C:/Users/Jason/Downloads/shadow_test.glb");
+	std::string scenePath = std::string(DATA_DIRECTORY_PATH) + "/scenes/shadow_test.glb";
+	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, scenePath.c_str());
 
 	SamplerZooPipeline pipeline;
 	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))
