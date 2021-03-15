@@ -34,17 +34,17 @@ void main() {
 	vec3 normal = normalize(v0.normal * w + v1.normal * attribs.x + v2.normal * attribs.y);
 	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
 	
-	const vec3 lightPos = vec3(0, 3, 0);
+	const vec3 lightPos = vec3(0, 4, 0);
 	const float lightRadius = 1.0;
 	
 	//Compute shader coverage
-	const int numSamples = 32;
+	const int numSamples = 16;
 	int hitCount = 0;
 	
 	for (int i = 0; i < numSamples; ++i) {
-		vec2 value = white_rng_generate_2d(payload.rng);
+		vec2 value = 2.0 * halton_rng_generate_2d(payload.rng) - 1.0;
 		
-		vec3 targetPos = lightPos + lightRadius * normalizedToUnitSphere(value.x, value.y);
+		vec3 targetPos = lightPos + lightRadius * vec3(value.x, 0, value.y);
 		
 		//Calculate light direction and distance
 		vec3 toLight = targetPos - origin;
@@ -65,5 +65,5 @@ void main() {
 	
 	float lightDistance = distance(lightPos, origin);
 	
-	payload.hitValue = vec3(10.0 / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(numSamples));
+	payload.hitValue = vec3(14.0 / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(numSamples));
 }

@@ -5,7 +5,7 @@
 
 struct SamplerZooHitPayload {
 	vec3 hitValue;
-	WhiteRngState rng;
+	HaltonRngState rng;
 };
 
 #endif
