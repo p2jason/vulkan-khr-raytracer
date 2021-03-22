@@ -9,6 +9,8 @@
 
 #include "Window.h"
 
+#define UINT32_ALIGN(x, a) (((x) + ((a) - 1)) & ~((a) - 1))
+
 #define PAUSE_AND_EXIT(x) std::cin.get(); std::exit(x);
 
 struct Buffer
@@ -40,6 +42,7 @@ private:
 
 	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
 	VkPhysicalDeviceMemoryProperties m_memProperties;
+	VkPhysicalDeviceLimits m_limits;
 	uint32_t m_queueFamilyIndex = (uint32_t)-1;
 
 	VkDevice m_device = VK_NULL_HANDLE;

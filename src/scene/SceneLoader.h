@@ -15,8 +15,9 @@ struct Material
 struct MeshBuffers
 {
 	Buffer vertexBuffer;
-	VkDeviceSize vertexOffset;
-	VkDeviceSize vertexSize;
+	std::pair<VkDeviceSize, VkDeviceSize> positionRange;
+	std::pair<VkDeviceSize, VkDeviceSize> texCoordRange;
+	std::pair<VkDeviceSize, VkDeviceSize> normalRange;
 
 	Buffer indexBuffer;
 	VkDeviceSize indexOffset;
@@ -46,13 +47,6 @@ public:
 	const RaytracingDevice* device = nullptr;
 public:
 	~Scene();
-};
-
-struct MeshVertex
-{
-	glm::vec3 position;
-	glm::vec3 normal;
-	glm::vec2 texCoords;
 };
 
 class SceneLoader

@@ -5,6 +5,8 @@
 #define MATH_PI_HALF (0.5 * 3.141592653589793)
 #define MATH_PI_DOUBLE (2.0 * 3.141592653589793)
 
+#define NONUNIFORM_MESH_IDX (nonuniformEXT(gl_InstanceCustomIndexEXT))
+
 struct Vertex
 {
 	//TODO: Split Vertex into SoA instead of AoS to allows for accessing only specific elements

@@ -7,25 +7,22 @@
 #include "common/common.glsl"
 
 hitAttributeEXT vec2 attribs;
-
-layout(set = 0, binding = 1, scalar) buffer VertexBuffers { Vertex v[]; } vertexBuffers[];
-layout(set = 0, binding = 2) buffer IndexBuffers { uint i[]; } indexBuffers[];
-layout(set = 0, binding = 3) uniform sampler2D albedoTextures[];
-layout(set = 0, binding = 4, scalar) buffer MaterialBuffer { Material materialBuffers[]; };
+layout(set = 0, binding = 3, scalar) buffer VertexTBuffers { vec2 v[]; } texCoordBuffers[];
+layout(set = 0, binding = 4, scalar) buffer IndexBuffers { uvec3 i[]; } indexBuffers[];
+layout(set = 0, binding = 5) uniform sampler2D albedoTextures[];
+layout(set = 0, binding = 6, scalar) buffer MaterialBuffer { Material materialBuffers[]; };
 
 void main() {
 	//Pull vertices
-	uint index0 = indexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].i[3 * gl_PrimitiveID];
-	uint index1 = indexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].i[3 * gl_PrimitiveID + 1];
-	uint index2 = indexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].i[3 * gl_PrimitiveID + 2];
+	uvec3 indices = indexBuffers[NONUNIFORM_MESH_IDX].i[gl_PrimitiveID];
 
-	Vertex v0 = vertexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].v[index0];
-	Vertex v1 = vertexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].v[index1];
-	Vertex v2 = vertexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].v[index2];
+	vec2 texCoord0 = texCoordBuffers[NONUNIFORM_MESH_IDX].v[indices.x];
+	vec2 texCoord1 = texCoordBuffers[NONUNIFORM_MESH_IDX].v[indices.y];
+	vec2 texCoord2 = texCoordBuffers[NONUNIFORM_MESH_IDX].v[indices.z];
 
-	vec2 texCoords = v0.texCoords * (1.0 - attribs.x - attribs.y) +
-					 v1.texCoords * attribs.x +
-					 v2.texCoords * attribs.y;
+	vec2 texCoords = texCoord0 * (1.0 - attribs.x - attribs.y) +
+					 texCoord1 * attribs.x +
+					 texCoord2 * attribs.y;
 	
 	//Pull material
 	Material material = materialBuffers[gl_InstanceID];

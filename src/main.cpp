@@ -46,6 +46,7 @@ int main()
 	std::vector<const char*> deviceExtensions = raytracingDevice.getRequiredExtensions();
 	std::vector<const char*> swapchainExtensions = presenter.determineDeviceExtensions(renderDevice.getPhysicalDevice());
 	deviceExtensions.insert(deviceExtensions.end(), swapchainExtensions.begin(), swapchainExtensions.end());
+	//deviceExtensions.push_back(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
 
 	//Create logical device
 	RaytracingDeviceFeatures* features = raytracingDevice.init(&renderDevice);

@@ -81,7 +81,13 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 		{
 			const aiMesh* mesh = scene->mMeshes[i];
 
-			VkDeviceSize vertexBufferSize = mesh->mNumVertices * sizeof(MeshVertex);
+			VkDeviceSize alignment = device->getPhysicalDeviceLimits().minStorageBufferOffsetAlignment;
+
+			std::pair<VkDeviceSize, VkDeviceSize> positionRange = std::make_pair(0, mesh->mNumVertices * sizeof(glm::vec3));
+			std::pair<VkDeviceSize, VkDeviceSize> texCoordRange = std::make_pair(UINT32_ALIGN(positionRange.first + positionRange.second, alignment), mesh->mNumVertices * sizeof(glm::vec2));
+			std::pair<VkDeviceSize, VkDeviceSize> normalRange = std::make_pair(UINT32_ALIGN(texCoordRange.first + texCoordRange.second, alignment), mesh->mNumVertices * sizeof(glm::vec3));
+
+			VkDeviceSize vertexBufferSize = normalRange.first + normalRange.second;
 			VkDeviceSize indexBufferSize = mesh->mNumFaces * (3 * sizeof(uint32_t));
 			VkDeviceSize stagingBufferSize = vertexBufferSize + indexBufferSize;
 
@@ -91,23 +97,23 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 			void* memory = nullptr;
 			VK_CHECK(vkMapMemory(device->getRenderDevice()->getDevice(), stagingBuffer.memory, 0, stagingBufferSize, 0, &memory));
 
-			MeshVertex* vertexMemory = (MeshVertex*)memory;
+			glm::vec3* positionMemory = (glm::vec3*)((uint8_t*)memory + positionRange.first);
+			glm::vec2* texCoordMemory = (glm::vec2*)((uint8_t*)memory + texCoordRange.first);
+			glm::vec3* normalMemory = (glm::vec3*)((uint8_t*)memory + normalRange.first);
+
 			for (unsigned int i = 0; i < mesh->mNumVertices; ++i)
 			{
 				aiVector3D pos = mesh->mVertices[i];
-				vertexMemory[i].position = { pos.x, pos.y, pos.z };
+				positionMemory[i] = { pos.x, pos.y, pos.z };
 				
 				aiVector3D normal = mesh->mNormals[i];
-				vertexMemory[i].normal = { normal.x, normal.y, normal.z };
+				normalMemory[i] = { normal.x, normal.y, normal.z };
 
-				if (mesh->HasTextureCoords(0))
-				{
-					aiVector3D texCoords = mesh->mTextureCoords[0][i];
-					vertexMemory[i].texCoords = { texCoords.x, texCoords.y };
-				}
+				aiVector3D texCoords = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0, 0, 0);
+				texCoordMemory[i] = { texCoords.x, texCoords.y };
 			}
 
-			unsigned int* indexMemory = (unsigned int*)&vertexMemory[mesh->mNumVertices];
+			unsigned int* indexMemory = (unsigned int*)((uint8_t*)memory + vertexBufferSize);
 			for (unsigned int i = 0; i < mesh->mNumFaces; ++i)
 			{
 				assert(mesh->mFaces[i].mNumIndices == 3);
@@ -126,7 +132,7 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 			Buffer indexBuffer = device->getRenderDevice()->createBuffer(indexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
 																						  VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(MeshVertex), mesh->mNumVertices, indexBuffer, mesh->mNumFaces, { 0 }, 0);
+			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(glm::vec3), mesh->mNumVertices, indexBuffer, mesh->mNumFaces, { 0 }, 0);
 
 			BottomLevelAS blas;
 			blas.init(device, geomertryInfo, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
@@ -136,7 +142,11 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 			stagingBuffers.push_back(stagingBuffer);
 
 			representation.meshBuffers.push_back({
-				vertexBuffer, 0, vertexBufferSize,
+				vertexBuffer, 
+				positionRange,
+				texCoordRange,
+				normalRange,
+
 				indexBuffer, 0, indexBufferSize
 			});
 
@@ -421,12 +431,16 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	VkDevice device = raytracingDevice->getRenderDevice()->getDevice();
 
 	//Create descriptor set layout
+	uint32_t meshBufferCount = (uint32_t)scene.meshBuffers.size();
+
 	VkDescriptorSetLayoutBinding layoutBinding[] = {
 		{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, nullptr },
-		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
-		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)scene.meshBuffers.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
-		{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.textures.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
-		{ 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr }
+		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshBufferCount, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshBufferCount, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshBufferCount, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshBufferCount, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.textures.size(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr },
+		{ 6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, nullptr }
 	};
 
 	VkDescriptorSetLayoutCreateInfo layoutCI = {};
@@ -439,7 +453,7 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	//Create descriptor pool
 	VkDescriptorPoolSize descPoolSizes[] = {
 		{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 * (uint32_t)scene.meshBuffers.size() + 1 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 * meshBufferCount + 1 },
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)scene.materials.size() }
 	};
 
@@ -475,34 +489,48 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	setWrites.back().pNext = &tlasSetWrite;
 	setWrites.back().dstSet = scene.descriptorSet;
 	setWrites.back().dstBinding = 0;
-	setWrites.back().descriptorCount = 1;
+	setWrites.back().descriptorCount = 1 ;
 	setWrites.back().descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
-	//Write vertex buffers (binding = 1)
-	std::vector<VkDescriptorBufferInfo> vertexSetWrites(scene.meshBuffers.size());
-	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexSetWrites.begin(), [](const MeshBuffers& val)
-		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.vertexOffset, val.vertexSize }; });
+	//Write position buffers (binding = 1)
+	std::vector<VkDescriptorBufferInfo> vertexPosSetWrites(scene.meshBuffers.size());
+	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexPosSetWrites.begin(), [](const MeshBuffers& val)
+		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.positionRange.first, val.positionRange.second }; });
 
-	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 1, vertexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 1, vertexPosSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-	//Write index buffers (binding = 2)
+	//Write normal buffers (binding = 2)
+	std::vector<VkDescriptorBufferInfo> vertexNormalSetWrites(scene.meshBuffers.size());
+	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexNormalSetWrites.begin(), [](const MeshBuffers& val)
+		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.normalRange.first, val.normalRange.second }; });
+
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 2, vertexNormalSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+	//Write texCoord buffers (binding = 3)
+	std::vector<VkDescriptorBufferInfo> vertexTexCoordSetWrites(scene.meshBuffers.size());
+	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexTexCoordSetWrites.begin(), [](const MeshBuffers& val)
+		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.texCoordRange.first, val.texCoordRange.second }; });
+
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 3, vertexTexCoordSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+	//Write index buffers (binding = 4)
 	std::vector<VkDescriptorBufferInfo> indexSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), indexSetWrites.begin(), [](const MeshBuffers& val)
 		{ return VkDescriptorBufferInfo{ val.indexBuffer.buffer, val.indexOffset, val.indexSize }; });
 
-	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 2, indexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 4, indexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-	//Write textures (binding = 3)
+	//Write textures (binding = 5)
 	std::vector<VkDescriptorImageInfo> imageSetWrites(scene.textures.size());
 	std::transform(scene.textures.begin(), scene.textures.end(), imageSetWrites.begin(), [](const std::pair<Image, VkSampler>& texture)
 		{ return VkDescriptorImageInfo{ texture.second, texture.first.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; });
 
-	DESC_SET_WRITE_IMAGE(setWrites, scene.descriptorSet, 3, imageSetWrites, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	DESC_SET_WRITE_IMAGE(setWrites, scene.descriptorSet, 5, imageSetWrites, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-	//Write material buffer (binding = 4)
+	//Write material buffer (binding = 6)
 	std::vector<VkDescriptorBufferInfo> materialSetWrites = { { scene.materialBuffer.buffer, 0, (VkDeviceSize)materialIndices.size() * sizeof(Material) } };
 
-	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 4, materialSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 6, materialSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	vkUpdateDescriptorSets(device, (uint32_t)setWrites.size(), setWrites.data(), 0, nullptr);
 }

@@ -57,6 +57,7 @@ public:
 	std::vector<const char*> getRequiredExtensions() const;
 
 	inline const RenderDevice* getRenderDevice() const { return m_renderDevice; }
+	inline const VkPhysicalDeviceLimits& getPhysicalDeviceLimits() const { return m_physicalDeviceProperties.limits; }
 	inline VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTPipelineProperties() const { return m_rtPipelineProperties; }
 };
 

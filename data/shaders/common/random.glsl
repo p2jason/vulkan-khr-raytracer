@@ -4,6 +4,8 @@
 const int INT_MAX = 0x7FFFFFFF;
 const int INT_MIN = 0x80000000;
 
+#define EPSILON (1e-7)
+
 const float FLOAT_NAN = sqrt(-1);
 
 int xorshift(int seed) {
@@ -43,7 +45,7 @@ float white_rng_generate_1d(inout WhiteRngState state) {
     //Convert to float
 	const float divisor = 1.0 / 4271.592653;
 	
-    return abs(fract(value * divisor));
+    return abs(fract(value * divisor) - EPSILON);
 }
 
 vec2 white_rng_generate_2d(inout WhiteRngState state) {
@@ -54,13 +56,15 @@ vec2 white_rng_generate_2d(inout WhiteRngState state) {
 	const float divisor1 = 1.0 / 4271.592653;
 	const float divisor2 = 1.0 / 3983.347946;
 	
-    return vec2(abs(fract(value1 * divisor1)),
-				abs(fract(value2 * divisor2)));
+    return vec2(abs(fract(value1 * divisor1) - EPSILON),
+				abs(fract(value2 * divisor2) - EPSILON));
 }
 
 /*
 Halton RNG
 ==============
+
+A random number generator based on the Halton sequence.
 */
 
 struct HaltonRngState {

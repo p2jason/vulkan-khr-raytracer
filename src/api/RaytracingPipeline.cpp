@@ -2,8 +2,6 @@
 
 #include <unordered_set>
 
-#define UINT32_ALIGN(x, a) ((x + (a - 1)) & ~(a - 1))
-
 bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
