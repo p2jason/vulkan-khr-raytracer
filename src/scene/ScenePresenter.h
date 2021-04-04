@@ -25,6 +25,18 @@ private:
 	VkRenderPass m_renderPass = VK_NULL_HANDLE;
 	std::vector<VkFramebuffer> m_framebuffers;
 
+	VkCommandPool m_commandPool = VK_NULL_HANDLE;
+	VkCommandBuffer m_commandBuffer = VK_NULL_HANDLE;
+	VkQueryPool m_queryPool = VK_NULL_HANDLE;
+
+	VkSemaphore m_imageAvailableSemaphore = VK_NULL_HANDLE;
+	VkSemaphore m_renderCompleteSemaphore = VK_NULL_HANDLE;
+	VkFence m_renderFinishedFence = VK_NULL_HANDLE;
+	uint32_t m_imageIndex = (uint32_t)-1;
+
+	float m_timestampPeriod = 0;
+	double m_renderTime = 0;
+
 	int m_width = 0;
 	int m_height = 0;
 
@@ -39,6 +51,9 @@ private:
 	void createFramebuffers();
 	void destroyFramebuffers();
 
+	void createCommandBuffers();
+	void destroyCommandBuffers();
+
 	void initImGui(const Window& window);
 	void destroyImGui();
 public:
@@ -51,10 +66,8 @@ public:
 
 	void drawUI();
 
-	inline uint32_t acquireNextImage(VkSemaphore semaphore) const { return m_swapchain.acquireNextImage(semaphore); }
-	inline void present(VkQueue queue, uint32_t imageIndex, const std::vector<VkSemaphore>& waitSemaphores) const { m_swapchain.present(queue, imageIndex, waitSemaphores); }
-
-	void showRender(VkCommandBuffer commandBuffer, const RaytracingPipeline& pipeline, uint32_t imageIndex, VkRect2D renderArea, ImageState prevImageState, VkImageLayout finalLayout) const;
+	VkCommandBuffer beginFrame();
+	void endFrame(const RaytracingPipeline& pipeline, VkRect2D renderArea, ImageState prevImageState);
 
 	inline std::vector<const char*> determineDeviceExtensions(VkPhysicalDevice physicalDevice) { return m_swapchainFactory.determineDeviceExtensions(physicalDevice); }
 	inline std::vector<const char*> determineInstanceExtensions() { return m_swapchainFactory.determineInstanceExtensions(); }

@@ -306,6 +306,58 @@ void ScenePresenter::createFramebuffers()
 	}
 }
 
+void ScenePresenter::createCommandBuffers()
+{
+	VkDevice device = m_device->getDevice();
+
+	m_commandPool = m_device->createCommandPool();
+
+	//Allocate command buffers
+	VkCommandBufferAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = m_commandPool;
+	allocInfo.commandBufferCount = 1;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &m_commandBuffer));
+
+	//Create synchronization primitives
+	VkSemaphoreCreateInfo semaphoreCI = {};
+	semaphoreCI.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	VK_CHECK(vkCreateSemaphore(device, &semaphoreCI, nullptr, &m_imageAvailableSemaphore));
+	VK_CHECK(vkCreateSemaphore(device, &semaphoreCI, nullptr, &m_renderCompleteSemaphore));
+
+	VkFenceCreateInfo fenceCI = {};
+	fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	VK_CHECK(vkCreateFence(device, &fenceCI, nullptr, &m_renderFinishedFence));
+
+	//Create query pool
+	VkQueryPoolCreateInfo queryPoolCI = {};
+	queryPoolCI.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	queryPoolCI.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	queryPoolCI.queryCount = 2;
+	queryPoolCI.pipelineStatistics = 0;
+	
+	VK_CHECK(vkCreateQueryPool(device, &queryPoolCI, nullptr, &m_queryPool));
+}
+
+void ScenePresenter::destroyCommandBuffers()
+{
+	VkDevice device = m_device->getDevice();
+
+	//Destroy command pool
+	vkDestroyCommandPool(device, m_commandPool, nullptr);
+
+	//Destroy synchronization primitives
+	vkDestroyFence(device, m_renderFinishedFence, nullptr);
+	vkDestroySemaphore(device, m_imageAvailableSemaphore, nullptr);
+	vkDestroySemaphore(device, m_renderCompleteSemaphore, nullptr);
+
+	vkDestroyQueryPool(device, m_queryPool, nullptr);
+}
+
 void ScenePresenter::destroyFramebuffers()
 {
 	for (size_t i = 0; i < m_framebuffers.size(); ++i)
@@ -374,39 +426,24 @@ void ScenePresenter::destroyImGui()
 	ImGui::DestroyContext();
 }
 
-void ScenePresenter::drawUI()
-{
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
-
-	
-
-	ImGui::Render();
-}
-
-void ScenePresenter::resize(int width, int height)
-{
-	m_width = width;
-	m_height = height;
-
-	destroySwapchain();
-	destroyFramebuffers();
-
-	createSwapchain();
-	createFramebuffers();
-}
-
 void ScenePresenter::init(const RenderDevice* device, const Window& window, int initialWidth, int initialHeight)
 {
 	m_device = device;
 	m_width = initialWidth;
 	m_height = initialHeight;
 
+	//Get timestap period
+	VkPhysicalDeviceProperties properties;
+	m_device->getPhysicalDevicePropertes(&properties, nullptr);
+
+	m_timestampPeriod = properties.limits.timestampPeriod;
+
+	//Initialize scene presenter 
 	createSwapchain();
 	createRenderPass();
 	createFramebuffers();
 	createPipeline();
+	createCommandBuffers();
 
 	initImGui(window);
 }
@@ -424,11 +461,52 @@ void ScenePresenter::destroy()
 	vkDestroyPipeline(m_device->getDevice(), m_pipeline, nullptr);
 	vkDestroyRenderPass(m_device->getDevice(), m_renderPass, nullptr);
 
+	destroyCommandBuffers();
 	destroyFramebuffers();
 	destroySwapchain();
 }
 
-void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingPipeline& pipeline, uint32_t imageIndex, VkRect2D renderArea, ImageState prevImageState, VkImageLayout finalLayout) const
+void ScenePresenter::resize(int width, int height)
+{
+	m_width = width;
+	m_height = height;
+
+	destroySwapchain();
+	destroyFramebuffers();
+
+	createSwapchain();
+	createFramebuffers();
+}
+
+void ScenePresenter::drawUI()
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+
+
+	ImGui::Render();
+}
+
+VkCommandBuffer ScenePresenter::beginFrame()
+{
+	//Get next image index
+	m_imageIndex = m_swapchain.acquireNextImage(m_imageAvailableSemaphore);
+
+	//Begin command buffer
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pInheritanceInfo = nullptr;
+
+	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
+
+	vkCmdWriteTimestamp(m_commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_queryPool, 0);
+
+	return m_commandBuffer;
+}
+
+void ScenePresenter::endFrame(const RaytracingPipeline& pipeline, VkRect2D renderArea, ImageState prevImageState)
 {
 	//Update pipeline descriptor set
 	VkDescriptorImageInfo imageInfo = {};
@@ -445,6 +523,9 @@ void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingP
 
 	vkUpdateDescriptorSets(m_device->getDevice(), 1, &setWrite, 0, nullptr);
 
+	vkCmdWriteTimestamp(m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPool, 1);
+
+	//Insert barrier to waits for output image to be rendered
 	VkImageMemoryBarrier imageBarrier = {};
 	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	imageBarrier.srcAccessMask = prevImageState.accessFlags;
@@ -460,7 +541,7 @@ void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingP
 	imageBarrier.subresourceRange.baseMipLevel = 0;
 	imageBarrier.subresourceRange.levelCount = 1;
 
-	vkCmdPipelineBarrier(commandBuffer, prevImageState.stageMask, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+	vkCmdPipelineBarrier(m_commandBuffer, prevImageState.stageMask, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 						 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
 
 	VkClearValue clearValue = { 0.1f, 0.4f, 0.7f, 1.0f };
@@ -468,33 +549,51 @@ void ScenePresenter::showRender(VkCommandBuffer commandBuffer, const RaytracingP
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.renderPass = m_renderPass;
-	renderPassBeginInfo.framebuffer = m_framebuffers[imageIndex];
+	renderPassBeginInfo.framebuffer = m_framebuffers[m_imageIndex];
 	renderPassBeginInfo.renderArea = renderArea;
 	renderPassBeginInfo.clearValueCount = 1;
 	renderPassBeginInfo.pClearValues = &clearValue;
 
-	vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBeginRenderPass(m_commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	//Record drawing commands
 	VkViewport viewport = { 0, 0, (float)m_width, (float)m_height, 0, 1 };
 	VkRect2D scissor = { { 0, 0 }, { (uint32_t)m_width, (uint32_t)m_height } };
 
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
+	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+	vkCmdSetViewport(m_commandBuffer, 0, 1, &viewport);
+	vkCmdSetScissor(m_commandBuffer, 0, 1, &scissor);
 
-	vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+	vkCmdDraw(m_commandBuffer, 6, 1, 0, 0);
 
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), m_commandBuffer);
 
-	vkCmdEndRenderPass(commandBuffer);
+	vkCmdEndRenderPass(m_commandBuffer);
 
 	imageBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	imageBarrier.dstAccessMask = 0;
 	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	imageBarrier.newLayout = prevImageState.layout;
 
-	vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+	vkCmdPipelineBarrier(m_commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
 						 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+	//Finish command buffer
+	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
+
+	vkResetQueryPool(m_device->getDevice(), m_queryPool, 0, 2);
+
+	m_device->submit({ m_commandBuffer }, { { m_imageAvailableSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT } }, { m_renderCompleteSemaphore }, m_renderFinishedFence);
+
+	m_swapchain.present(m_device->getQueue(), m_imageIndex, { m_renderCompleteSemaphore });
+
+	VK_CHECK(vkWaitForFences(m_device->getDevice(), 1, &m_renderFinishedFence, VK_TRUE, UINT64_MAX));
+	VK_CHECK(vkResetFences(m_device->getDevice(), 1, &m_renderFinishedFence));
+	VK_CHECK(vkResetCommandPool(m_device->getDevice(), m_commandPool, 0));
+
+	uint64_t timestamps[2];
+	VK_CHECK(vkGetQueryPoolResults(m_device->getDevice(), m_queryPool, 0, 2, sizeof(timestamps), timestamps, sizeof(timestamps[0]), VK_QUERY_RESULT_64_BIT));
+
+	m_renderTime = (double)(timestamps[1] - timestamps[0]) / 1000000000.0 * m_timestampPeriod;
 }

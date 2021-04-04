@@ -46,8 +46,7 @@ int main()
 	std::vector<const char*> deviceExtensions = raytracingDevice.getRequiredExtensions();
 	std::vector<const char*> swapchainExtensions = presenter.determineDeviceExtensions(renderDevice.getPhysicalDevice());
 	deviceExtensions.insert(deviceExtensions.end(), swapchainExtensions.begin(), swapchainExtensions.end());
-	//deviceExtensions.push_back(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-
+	
 	//Create logical device
 	RaytracingDeviceFeatures* features = raytracingDevice.init(&renderDevice);
 
@@ -73,38 +72,6 @@ int main()
 	pipeline.createRenderTarget(1920, 1080);
 	pipeline.setCameraData(scene->cameraPosition, scene->cameraRotation);
 
-	//Create command pool & buffer
-	VkDevice device = renderDevice.getDevice();
-	VkCommandPool commandPool = renderDevice.createCommandPool();
-
-	VkCommandBuffer commandBuffer;
-	{
-		VkCommandBufferAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocInfo.commandPool = commandPool;
-		allocInfo.commandBufferCount = 1;
-		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		
-		VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer));
-	}
-
-	VkSemaphore imageAvailableSemaphore;
-	VkSemaphore renderCompleteSemaphore;
-	VkFence renderFinishedFence;
-
-	{
-		VkSemaphoreCreateInfo semaphoreCI = {};
-		semaphoreCI.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-		
-		VK_CHECK(vkCreateSemaphore(device, &semaphoreCI, nullptr, &imageAvailableSemaphore));
-		VK_CHECK(vkCreateSemaphore(device, &semaphoreCI, nullptr, &renderCompleteSemaphore));
-
-		VkFenceCreateInfo fenceCI = {};
-		fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		
-		VK_CHECK(vkCreateFence(device, &fenceCI, nullptr, &renderFinishedFence));
-	}
-
 	while (!window.isCloseRequested())
 	{
 		window.pollEvents();
@@ -121,30 +88,14 @@ int main()
 		//Render
 		presenter.drawUI();
 
-		uint32_t imageIndex = presenter.acquireNextImage(imageAvailableSemaphore);
-
-		VkCommandBufferBeginInfo beginInfo = {};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.pInheritanceInfo = nullptr;
-
-		VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+		VkCommandBuffer commandBuffer = presenter.beginFrame();
 
 		pipeline.raytrace(commandBuffer);
 
 		VkRect2D renderArea = { { 0, 0 }, { (uint32_t)viewportSize.x, (uint32_t)viewportSize.y } };
 		ImageState previousImageState = { VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_IMAGE_LAYOUT_GENERAL };
 		
-		presenter.showRender(commandBuffer, pipeline, imageIndex, renderArea, previousImageState, VK_IMAGE_LAYOUT_GENERAL);
-		
-		VK_CHECK(vkEndCommandBuffer(commandBuffer));
-
-		renderDevice.submit({ commandBuffer }, { { imageAvailableSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT } }, { renderCompleteSemaphore }, renderFinishedFence);
-
-		presenter.present(renderDevice.getQueue(), imageIndex, { renderCompleteSemaphore });
-
-		VK_CHECK(vkWaitForFences(device, 1, &renderFinishedFence, VK_TRUE, UINT64_MAX));
-		VK_CHECK(vkResetFences(device, 1, &renderFinishedFence));
-		VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+		presenter.endFrame(pipeline, renderArea, previousImageState);
 
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(1ms);
@@ -153,12 +104,6 @@ int main()
 	pipeline.destroyRenderTarget();
 	pipeline.destroy();
 	scene = nullptr;
-
-	vkDestroyFence(device, renderFinishedFence, nullptr);
-	vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-	vkDestroySemaphore(device, renderCompleteSemaphore, nullptr);
-
-	vkDestroyCommandPool(device, commandPool, nullptr);
 
 	presenter.destroy();
 	renderDevice.destroy();
