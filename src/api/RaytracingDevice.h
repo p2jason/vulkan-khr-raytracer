@@ -23,7 +23,7 @@ struct BLASGeometryInfo
 	std::vector<VkAccelerationStructureBuildRangeInfoKHR> rangeInfoArray;
 };
 
-class RaytracingPipeline;
+class NativeRaytracingPipeline;
 
 class BottomLevelAS;
 class TopLevelAS;

@@ -2,7 +2,7 @@
 
 #include "api/RaytracingPipeline.h"
 
-class SamplerZooPipeline : public RaytracingPipeline
+class SamplerZooPipeline : public NativeRaytracingPipeline
 {
 private:
 	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;

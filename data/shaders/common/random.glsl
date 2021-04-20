@@ -79,7 +79,7 @@ void halton_rng_init(inout HaltonRngState state, int base1, int base2, vec2 uv, 
 	state.base = ((base2 & 0xFFFF) << 16) | (base1 & 0xFFFF);
 }
 
-float halton_rng_generate(inout HaltonRngState state, bool dimTwo) {
+float halton_rng_generate(const HaltonRngState state, const bool dimTwo) {
 	float fraction = 1.0;
 	float result = 0;
 	

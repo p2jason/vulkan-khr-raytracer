@@ -1,8 +1,10 @@
 #include "RaytracingPipeline.h"
 
+#include "Resources.h"
+
 #include <unordered_set>
 
-bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene)
+bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
 	VkDevice device = renderDevice->getDevice();
@@ -176,7 +178,7 @@ bool RaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipeli
 	return true;
 }
 
-void RaytracingPipeline::destroy()
+void NativeRaytracingPipeline::destroy()
 {
 	clean(m_device);
 
@@ -197,7 +199,7 @@ void RaytracingPipeline::destroy()
 	m_scene = nullptr;
 }
 
-void RaytracingPipeline::raytrace(VkCommandBuffer commandBuffer)
+void NativeRaytracingPipeline::raytrace(VkCommandBuffer commandBuffer)
 {
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 0, 1, &m_scene->descriptorSet, 0, nullptr);
 

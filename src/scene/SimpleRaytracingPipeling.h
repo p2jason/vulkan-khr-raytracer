@@ -2,7 +2,7 @@
 
 #include "api/RaytracingPipeline.h"
 
-class BasicRaytracingPipeline : public RaytracingPipeline
+class BasicRaytracingPipeline : public NativeRaytracingPipeline
 {
 private:
 	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
