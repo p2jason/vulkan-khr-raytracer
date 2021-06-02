@@ -17,12 +17,12 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
 	//Load pipeline shaders
-	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("shaders/sampler_zoo/sampler_zoo.rgen"));
-	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("shaders/sampler_zoo/sampler_zoo.rmiss"));
-	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("shaders/sampler_zoo/sampler_zoo.rchit"));
-	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("shaders/sampler_zoo/sampler_zoo.rahit"));
+	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rgen"));
+	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rmiss"));
+	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rchit"));
+	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rahit"));
 
-	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("shaders/sampler_zoo/sampler_zoo_shadow.rmiss"));
+	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo_shadow.rmiss"));
 
 	if (raygenModule == VK_NULL_HANDLE ||
 		missModule == VK_NULL_HANDLE ||

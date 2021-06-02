@@ -1,5 +1,7 @@
 #include "SceneLoader.h"
 
+#include <Resources.h>
+
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -540,10 +542,12 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	//Import scene from file
 	std::cout << "Importing scene " << scenePath << "... ";
 
+	std::string path = Resources::resolvePath(scenePath);
+
 	auto start = std::chrono::high_resolution_clock::now();
 
 	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(scenePath, aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_ConvertToLeftHanded);
+	const aiScene* scene = importer.ReadFile(path.c_str(), aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_ConvertToLeftHanded);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;

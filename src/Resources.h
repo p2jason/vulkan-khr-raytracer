@@ -7,14 +7,24 @@
 class Resources
 {
 public:
-	inline static std::string resolvePath(const char* path, bool absolute = false)
+	inline static std::string resolvePath(const char* path)
 	{
-		return absolute ? std::string(path) : (std::string(DATA_DIRECTORY_PATH) + "/" + std::string(path));
+		static const char* resourcePrefix = "asset://";
+		static const size_t prefixLength = strlen(resourcePrefix);
+
+		static const std::string dataDirectory = std::string(DATA_DIRECTORY_PATH) + std::string("/");
+
+		if (!strncmp(path, resourcePrefix, prefixLength))
+		{
+			return dataDirectory + std::string(path + prefixLength);
+		}
+
+		return std::string(path);
 	}
 
-	inline static std::string loadShader(const char* path, bool absolute = false)
+	inline static std::string loadShader(const char* path)
 	{
-		std::string fullPath = resolvePath(path, absolute);
+		std::string fullPath = resolvePath(path);
 
 		std::ifstream in(fullPath, std::ios::in | std::ios::binary);
 		if (!in)

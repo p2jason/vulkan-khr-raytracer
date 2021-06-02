@@ -60,8 +60,7 @@ int main()
 	presenter.init(&renderDevice, window, viewportSize.x, viewportSize.y);
 
 	//Load scene and created pipeline
-	std::string scenePath = std::string(DATA_DIRECTORY_PATH) + "/scenes/shadow_test.glb";
-	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, scenePath.c_str());
+	std::shared_ptr<Scene> scene = SceneLoader::loadScene(&raytracingDevice, "asset://scenes/shadow_test.glb");
 
 	SamplerZooPipeline pipeline;
 	if (!pipeline.init(&raytracingDevice, VK_NULL_HANDLE, scene))

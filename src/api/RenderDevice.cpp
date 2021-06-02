@@ -149,7 +149,7 @@ public:
 			return nullptr;
 		}
 
-		std::string* content = new std::string(Resources::loadShader(pathString.c_str(), true));
+		std::string* content = new std::string(Resources::loadShader(pathString.c_str()));
 
 		return new IncludeResult(pathString, content->c_str(), content->size(), (void*)content);
 	}
