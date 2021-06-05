@@ -7,18 +7,16 @@ void errorCallback(int error, const char* description)
 	std::cout << "GLFW Error: " << description << std::endl;
 }
 
-bool Window::init(const char* title, int width, int height)
+void Window::init(const char* title, int width, int height)
 {
 	if (!glfwInit())
 	{
-		std::cout << "Failed to initialize GLFW!" << std::endl;
-		return false;
+		FATAL_ERROR("Failed to initialize GLFW!");
 	}
 
 	if (!glfwVulkanSupported())
 	{
-		std::cout << "Vulkan not supported by GLFW!" << std::endl;
-		return false;
+		FATAL_ERROR("Vulkan not supported by GLFW!");
 	}
 
 	volkInitialize();
@@ -32,8 +30,6 @@ bool Window::init(const char* title, int width, int height)
 	m_window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
 	glfwShowWindow(m_window);
-
-	return true;
 }
 
 void Window::pollEvents() const
@@ -68,7 +64,7 @@ VkSurfaceKHR Window::createSurface(VkInstance instance) const
 	VkSurfaceKHR surface;
 	if (glfwCreateWindowSurface(instance, m_window, nullptr, &surface) != VK_SUCCESS)
 	{
-		std::cout << "Failed to create window surface!" << std::endl;
+		FATAL_ERROR("Failed to create window surface!");
 	}
 
 	return surface;

@@ -1,6 +1,6 @@
 #include "SimpleRaytracingPipeling.h"
 
-#include "Resources.h"
+#include "Common.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>

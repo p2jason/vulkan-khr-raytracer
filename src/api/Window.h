@@ -10,6 +10,8 @@
 #include <vector>
 #include <cstdint>
 
+#include "Common.h"
+
 class Window
 {
 private:
@@ -17,7 +19,7 @@ private:
 public:
 	Window() {}
 
-	bool init(const char* title, int width, int height);
+	void init(const char* title, int width, int height);
 	void terminate();
 
 	void pollEvents() const;

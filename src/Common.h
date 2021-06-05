@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <cassert>
 
 #include "ProjectBase.h"
 
@@ -49,3 +50,5 @@ public:
 		return std::string(DATA_DIRECTORY_PATH) + "/shaders/";
 	}
 };
+
+#define FATAL_ERROR(...) printf(__VA_ARGS__); assert(false)

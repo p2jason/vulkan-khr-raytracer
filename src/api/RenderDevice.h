@@ -11,8 +11,6 @@
 
 #define UINT32_ALIGN(x, a) (((x) + ((a) - 1)) & ~((a) - 1))
 
-#define PAUSE_AND_EXIT(x) std::cin.get(); std::exit(x);
-
 struct Buffer
 {
 	VkBuffer buffer = VK_NULL_HANDLE;

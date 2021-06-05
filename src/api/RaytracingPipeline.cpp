@@ -1,6 +1,6 @@
 #include "RaytracingPipeline.h"
 
-#include "Resources.h"
+#include "Common.h"
 
 #include <unordered_set>
 

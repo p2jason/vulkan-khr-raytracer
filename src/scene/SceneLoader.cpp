@@ -1,13 +1,13 @@
 #include "SceneLoader.h"
 
-#include <Resources.h>
+#include <Common.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
-
-//#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
 
 #include <glm/gtx/transform.hpp>
 
@@ -228,8 +228,7 @@ bool loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTex
 	}
 	else
 	{
-		std::cerr << "External textures not supoported yet!" << std::endl;
-		PAUSE_AND_EXIT(-1);//TODO: Support non-embedded textures
+		FATAL_ERROR("External textures not supoported yet!");
 	}
 
 	return true;

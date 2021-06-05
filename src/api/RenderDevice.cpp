@@ -8,7 +8,7 @@
 #include <SPIRV/GlslangToSpv.h>
 #include <SPIRV/Logger.h>
 
-#include "Resources.h"
+#include "Common.h"
 
 class BeginTerminateHook
 {
@@ -254,8 +254,7 @@ void RenderDevice::createInstance(std::vector<const char*> extensions, std::vect
 
 		if (!found)
 		{
-			std::cout << "Cannot find extension: " << extensions[i] << std::endl;
-			PAUSE_AND_EXIT(-1)
+			FATAL_ERROR("Cannot find extension: %s", extensions[i]);
 		}
 	}
 
@@ -281,8 +280,7 @@ void RenderDevice::createInstance(std::vector<const char*> extensions, std::vect
 
 		if (!found)
 		{
-			std::cout << "Cannot find layer: " << validationLayers[i] << std::endl;
-			PAUSE_AND_EXIT(-1)
+			FATAL_ERROR("Cannot find layer: %s", validationLayers[i]);
 		}
 	}
 
@@ -359,8 +357,7 @@ void RenderDevice::choosePhysicalDevice()
 
 	if (bestDevice == VK_NULL_HANDLE)
 	{
-		std::cout << "Cannot find adequate GPU!" << std::endl;
-		PAUSE_AND_EXIT(-1)
+		FATAL_ERROR("Cannot find adequate GPU!");
 	}
 
 	m_physicalDevice = bestDevice;
@@ -419,8 +416,7 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 
 		if (!found)
 		{
-			std::cout << "Cannot find extension: " << extensions[i] << std::endl;
-			PAUSE_AND_EXIT(-1)
+			FATAL_ERROR("Cannot find extension: %s", extensions[i]);
 		}
 	}
 
@@ -446,8 +442,7 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 
 		if (!found)
 		{
-			std::cout << "Cannot find layer: " << validationLayers[i] << std::endl;
-			PAUSE_AND_EXIT(-1)
+			FATAL_ERROR("Cannot find layer: %s", validationLayers[i]);
 		}
 	}
 
@@ -473,8 +468,7 @@ void RenderDevice::createLogicalDevice(std::vector<const char*> extensions, std:
 
 	if (m_queueFamilyIndex == (uint32_t)-1)
 	{
-		std::cout << "Cannot find queue family that supports graphics operations!" << std::endl;
-		PAUSE_AND_EXIT(-1)
+		FATAL_ERROR("Cannot find queue family that supports graphics operations!");
 	}
 
 	float priority = 1.0f;

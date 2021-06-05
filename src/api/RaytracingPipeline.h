@@ -39,6 +39,11 @@ public:
 	virtual bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene) = 0;
 	virtual void destroy() = 0;
 
+	virtual void raytrace(VkCommandBuffer buffer) = 0;
+
+	virtual void createRenderTarget(int width, int height) = 0;
+	virtual void destroyRenderTarget() = 0;
+
 	virtual Image getRenderTarget() const = 0;
 	virtual glm::ivec2 getRenderTargetSize() const = 0;
 
@@ -81,5 +86,5 @@ public:
 	bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene) override;
 	void destroy() override;
 
-	void raytrace(VkCommandBuffer buffer);
+	void raytrace(VkCommandBuffer buffer) override;
 };

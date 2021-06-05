@@ -45,8 +45,7 @@ RaytracingDeviceFeatures* RaytracingDevice::init(RenderDevice* renderDevice)
 	//Check features
 	if (!m_accelStructFeatures.accelerationStructure || !m_accelStructFeatures.descriptorBindingAccelerationStructureUpdateAfterBind)
 	{
-		std::cout << "Required acceleration structure features not suported" << std::endl;
-		PAUSE_AND_EXIT(-1);
+		FATAL_ERROR("Required acceleration structure features not suported");
 	}
 
 	//Create feature struct

@@ -386,8 +386,7 @@ void ScenePresenter::initImGui(const Window& window)
 
 	if (!ImGui_ImplVulkan_LoadFunctions(&imguiLoadVulkanFunc, (void*)m_device))
 	{
-		std::cerr << "Failed to create ImGui" << std::endl;
-		PAUSE_AND_EXIT(-1);
+		FATAL_ERROR("Failed to create ImGui");
 	}
 
 	ImGui_ImplGlfw_InitForVulkan(window.getHandle(), true);
@@ -407,8 +406,7 @@ void ScenePresenter::initImGui(const Window& window)
 
 	if (!ImGui_ImplVulkan_Init(&initInfo, m_renderPass))
 	{
-		std::cerr << "Failed to create ImGui" << std::endl;
-		PAUSE_AND_EXIT(-1);
+		FATAL_ERROR("Failed to create ImGui");
 	}
 
 	m_device->executeCommands(1, [](VkCommandBuffer* commandBuffers)
