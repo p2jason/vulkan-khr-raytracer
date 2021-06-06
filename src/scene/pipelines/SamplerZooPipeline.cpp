@@ -126,6 +126,11 @@ void SamplerZooPipeline::createRenderTarget(int width, int height)
 
 void SamplerZooPipeline::destroyRenderTarget()
 {
+	if (m_device == nullptr)
+	{
+		return;
+	}
+
 	m_device->getRenderDevice()->destroyImage(m_renderTarget);
 }
 
@@ -179,7 +184,7 @@ void SamplerZooPipeline::bind(VkCommandBuffer commandBuffer)
 		imageBarrier.subresourceRange.levelCount = 1;
 
 		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-			0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+											0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
 
 		m_renderTargetInitialized = true;
 	}

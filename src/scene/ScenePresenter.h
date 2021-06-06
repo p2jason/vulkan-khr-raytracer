@@ -64,8 +64,6 @@ public:
 
 	void resize(int width, int height);
 
-	void drawUI();
-
 	VkCommandBuffer beginFrame();
 	void endFrame(const RaytracingPipeline& pipeline, VkRect2D renderArea, ImageState prevImageState);
 

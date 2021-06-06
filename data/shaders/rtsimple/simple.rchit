@@ -12,24 +12,23 @@ layout(location = 0) rayPayloadInEXT hitPayload payload;
 layout(location = 1) rayPayloadEXT bool isShadowed;
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = 0, binding = 1, scalar) buffer VertexBuffers { Vertex v[]; } vertexBuffers[];
-layout(set = 0, binding = 2) buffer IndexBuffers { uint i[]; } indexBuffers[];
-layout(set = 0, binding = 3) uniform sampler2D albedoTextures[];
-layout(set = 0, binding = 4, scalar) buffer MaterialBuffer { Material materialBuffers[]; };
+layout(set = 0, binding = 2, scalar) buffer VertexNBuffers { vec3 v[]; } normalBuffers[];
+layout(set = 0, binding = 3, scalar) buffer VertexTBuffers { vec2 v[]; } texCoordBuffers[];
+layout(set = 0, binding = 4, scalar) buffer IndexBuffers { uvec3 i[]; } indexBuffers[];
+layout(set = 0, binding = 5) uniform sampler2D albedoTextures[];
+layout(set = 0, binding = 6, scalar) buffer MaterialBuffer { Material materialBuffers[]; };
 
 void main() {
 	//Pull vertices
-	uint index0 = indexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].i[3 * gl_PrimitiveID];
-	uint index1 = indexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].i[3 * gl_PrimitiveID + 1];
-	uint index2 = indexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].i[3 * gl_PrimitiveID + 2];
+	uvec3 indices = indexBuffers[NONUNIFORM_MESH_IDX].i[gl_PrimitiveID];
 
-	Vertex v0 = vertexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].v[index0];
-	Vertex v1 = vertexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].v[index1];
-	Vertex v2 = vertexBuffers[nonuniformEXT(gl_InstanceCustomIndexEXT)].v[index2];
+	vec2 texCoords0 = texCoordBuffers[NONUNIFORM_MESH_IDX].v[indices.x];
+	vec2 texCoords1 = texCoordBuffers[NONUNIFORM_MESH_IDX].v[indices.y];
+	vec2 texCoords2 = texCoordBuffers[NONUNIFORM_MESH_IDX].v[indices.z];
 
 	float w = 1.0 - attribs.x - attribs.y;
 
-	vec2 texCoords = v0.texCoords * w + v1.texCoords * attribs.x + v2.texCoords * attribs.y;
+	vec2 texCoords = texCoords0 * w + texCoords1 * attribs.x + texCoords2 * attribs.y;
 
 	//Pull material
 	Material material = materialBuffers[gl_InstanceID];
@@ -39,11 +38,15 @@ void main() {
 	if (material.albedoIndex != -1) {
 		color = texture(albedoTextures[nonuniformEXT(material.albedoIndex)], texCoords);
 	}
+
+	vec3 normal0 = normalBuffers[NONUNIFORM_MESH_IDX].v[indices.x];
+	vec3 normal1 = normalBuffers[NONUNIFORM_MESH_IDX].v[indices.y];
+	vec3 normal2 = normalBuffers[NONUNIFORM_MESH_IDX].v[indices.z];
 	
 	//Test shadows
 	isShadowed = true;
 	
-	vec3 normal = v0.normal * w + v1.normal * attribs.x + v2.normal * attribs.y;
+	vec3 normal = normal0 * w + normal1 * attribs.x + normal2 * attribs.y;
 	
     vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
 	const vec3 direction = normalize(vec3(-0.5, 1, 0.2));

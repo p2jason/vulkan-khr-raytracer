@@ -17,12 +17,12 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 	const RenderDevice* renderDevice = device->getRenderDevice();
 	
 	//Load pipeline shaders
-	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rgen"));
-	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rmiss"));
-	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rchit"));
-	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("shaders/rtsimple/simple.rahit"));
+	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rgen"));
+	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rmiss"));
+	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rchit"));
+	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rahit"));
 
-	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("shaders/rtsimple/shadow.rmiss"));
+	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/shadow.rmiss"));
 
 	if (raygenModule == VK_NULL_HANDLE ||
 		missModule == VK_NULL_HANDLE ||
@@ -126,6 +126,11 @@ void BasicRaytracingPipeline::createRenderTarget(int width, int height)
 
 void BasicRaytracingPipeline::destroyRenderTarget()
 {
+	if (m_device == nullptr)
+	{
+		return;
+	}
+
 	m_device->getRenderDevice()->destroyImage(m_renderTarget);
 }
 

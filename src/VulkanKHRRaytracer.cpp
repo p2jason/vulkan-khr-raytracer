@@ -3,11 +3,19 @@
 #include <chrono>
 #include <thread>
 
+#include <imgui.h>
+#include <imgui_internal.h>
+
+#include <backends/imgui_impl_vulkan.h>
+#include <backends/imgui_impl_glfw.h>
+
 #include "scene/pipelines/SamplerZooPipeline.h"
+#include "scene/SimpleRaytracingPipeling.h"
 
 std::vector<const char*> s_validationLayers({ "VK_LAYER_KHRONOS_validation" });
 
-VulkanKHRRaytracer::VulkanKHRRaytracer()
+VulkanKHRRaytracer::VulkanKHRRaytracer() :
+	m_reloadScene(true)
 {
 
 }
@@ -43,16 +51,10 @@ void VulkanKHRRaytracer::start()
 	//Create scene presenter
 	m_presenter.init(&m_device, m_window, m_startingWidth, m_startingHeight);
 
-	//START OF TEMPORARY SECTION
-	m_scene = SceneLoader::loadScene(&m_raytracingDevice, "asset://scenes/shadow_test.glb");
-
+	//Create pipeline
 	m_pipeline = new SamplerZooPipeline();
-	m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
 
-	m_pipeline->createRenderTarget(1920, 1080);
-	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
-
-	//END OF TEMPORARY SECTION
+	strcpy(m_scenePath, m_pipeline->getDefaultScene().c_str());
 
 	printf("Starting renderer...\n");
 
@@ -76,7 +78,23 @@ void VulkanKHRRaytracer::mainLoop()
 			m_presenter.resize(viewportSize.x, viewportSize.y);
 		}
 
-		m_presenter.drawUI();
+		drawUI();
+
+		//Update scene
+		if (m_reloadScene)
+		{
+			m_pipeline->destroyRenderTarget();
+			m_pipeline->destroy();
+
+			m_scene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath);
+
+			m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
+
+			m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
+			m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
+
+			m_reloadScene = false;
+		}
 
 		VkCommandBuffer commandBuffer = m_presenter.beginFrame();
 
@@ -90,6 +108,50 @@ void VulkanKHRRaytracer::mainLoop()
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(1ms);
 	}
+}
+
+void VulkanKHRRaytracer::drawUI()
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	if (ImGui::Begin("Frame"))
+	{
+		//ImGui::SetWindowFontScale(2.0f);
+
+		if (ImGui::CollapsingHeader("Camera Details", 0))
+		{
+			//Resolution input
+			static int dimensions[2] = { m_renderTargetWidth, m_renderTargetHeight };
+
+			ImGui::SetNextItemWidth(150);
+			if (ImGui::InputInt2("Resolution", dimensions, ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				m_renderTargetWidth = dimensions[0];
+				m_renderTargetHeight = dimensions[1];
+
+				m_pipeline->destroyRenderTarget();
+				m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
+			}
+			
+			//
+		}
+
+		if (ImGui::CollapsingHeader("Scene", 0))
+		{
+			if (ImGui::InputText("Scene path", m_scenePath, sizeof(m_scenePath) / sizeof(m_scenePath[0]) - 1, ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				m_reloadScene = true;
+			}
+		}
+
+		ImGui::End();
+	}
+
+	//ImGui::ShowDemoWindow();
+
+	ImGui::Render();
 }
 
 void VulkanKHRRaytracer::stop()

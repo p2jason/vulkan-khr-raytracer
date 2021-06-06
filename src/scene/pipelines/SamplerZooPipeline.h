@@ -30,6 +30,8 @@ public:
 	void createRenderTarget(int width, int height) override;
 	void destroyRenderTarget() override;
 
+	inline std::string getDefaultScene() const override { return "asset://scenes/shadow_test.glb"; }
+
 	inline Image getRenderTarget() const override { return m_renderTarget; }
 	inline glm::ivec2 getRenderTargetSize() const override { return glm::ivec2(m_width, m_height); }
 };

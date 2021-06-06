@@ -14,17 +14,25 @@ private:
 	int m_startingWidth = 1920;
 	int m_startingHeight = 1080;
 
+	int m_renderTargetWidth = 1920;
+	int m_renderTargetHeight = 1080;
+
+	char m_scenePath[1024] = { 0 };
+
 	RenderDevice m_device;
 	RaytracingDevice m_raytracingDevice;
 
 	ScenePresenter m_presenter;
 
 	RaytracingPipeline* m_pipeline = nullptr;
+
+	bool m_reloadScene = false;
 	std::shared_ptr<Scene> m_scene = nullptr;
 private:
 	VulkanKHRRaytracer();
 
 	void mainLoop();
+	void drawUI();
 public:
 	VulkanKHRRaytracer(const VulkanKHRRaytracer&) = delete;
 	~VulkanKHRRaytracer() {}

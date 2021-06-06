@@ -47,6 +47,8 @@ public:
 	virtual Image getRenderTarget() const = 0;
 	virtual glm::ivec2 getRenderTargetSize() const = 0;
 
+	virtual std::string getDefaultScene() const = 0;
+
 	inline glm::vec3 getCameraPosition() const { return m_cameraPosition; }
 	inline glm::quat getCameraRotation() const { return m_cameraRotation; }
 

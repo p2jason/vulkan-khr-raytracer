@@ -180,6 +180,11 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 
 void NativeRaytracingPipeline::destroy()
 {
+	if (m_device == nullptr)
+	{
+		return;
+	}
+
 	clean(m_device);
 
 	VkDevice device = m_device->getRenderDevice()->getDevice();

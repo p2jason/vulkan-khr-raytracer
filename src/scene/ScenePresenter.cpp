@@ -1,7 +1,5 @@
 #include "ScenePresenter.h"
 
-#include <imgui.h>
-#include <imgui_internal.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <backends/imgui_impl_glfw.h>
 
@@ -474,17 +472,6 @@ void ScenePresenter::resize(int width, int height)
 
 	createSwapchain();
 	createFramebuffers();
-}
-
-void ScenePresenter::drawUI()
-{
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
-
-
-
-	ImGui::Render();
 }
 
 VkCommandBuffer ScenePresenter::beginFrame()
