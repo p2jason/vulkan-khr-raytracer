@@ -21,7 +21,7 @@ void main() {
 
 	vec3 direction = normalize(cameraMatrix * vec3(pixelUV, 1.0));
 
-	halton_rng_init(payload.rng, 2, 3, pixelUV, 0);
+	halton_rng_init(payload.rng, 5, 7, pixelUV, 0);
 
 	uint rayFlags = gl_RayFlagsNoneEXT;
 	float tMin = 0.01;

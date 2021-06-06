@@ -36,7 +36,7 @@ void main() {
 	const float lightRadius = 1.0;
 	
 	const int numSamples = 16;
-	int hitCount = 0;
+	float hitCount = 0;
 	
 	for (int i = 0; i < numSamples; ++i) {
 		vec2 value = 2.0 * halton_rng_generate_2d(payload.rng) - 1.0;
@@ -56,7 +56,7 @@ void main() {
 		traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 1, origin, tMin, toLight, lightDistance, 1);
 		
 		if (!isShadowed) {
-			hitCount++;
+			hitCount += max(dot(toLight, normal), 0);
 		}
 	}
 	
