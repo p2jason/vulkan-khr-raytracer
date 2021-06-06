@@ -491,43 +491,46 @@ VkCommandBuffer ScenePresenter::beginFrame()
 	return m_commandBuffer;
 }
 
-void ScenePresenter::endFrame(const RaytracingPipeline& pipeline, VkRect2D renderArea, ImageState prevImageState)
+void ScenePresenter::endFrame(const RaytracingPipeline* pipeline, VkRect2D renderArea, ImageState prevImageState)
 {
-	//Update pipeline descriptor set
-	VkDescriptorImageInfo imageInfo = {};
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfo.imageView = pipeline.getRenderTarget().imageView;
-
-	VkWriteDescriptorSet setWrite = {};
-	setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	setWrite.dstSet = m_descriptorSet;
-	setWrite.dstBinding = 0;
-	setWrite.descriptorCount = 1;
-	setWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	setWrite.pImageInfo = &imageInfo;
-
-	vkUpdateDescriptorSets(m_device->getDevice(), 1, &setWrite, 0, nullptr);
-
 	vkCmdWriteTimestamp(m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPool, 1);
 
-	//Insert barrier to waits for output image to be rendered
-	VkImageMemoryBarrier imageBarrier = {};
-	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	imageBarrier.srcAccessMask = prevImageState.accessFlags;
-	imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	imageBarrier.oldLayout = prevImageState.layout;
-	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageBarrier.image = pipeline.getRenderTarget().image;
-	imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageBarrier.subresourceRange.baseArrayLayer = 0;
-	imageBarrier.subresourceRange.layerCount = 1;
-	imageBarrier.subresourceRange.baseMipLevel = 0;
-	imageBarrier.subresourceRange.levelCount = 1;
+	if (pipeline)
+	{
+		//Update pipeline descriptor set
+		VkDescriptorImageInfo imageInfo = {};
+		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageInfo.imageView = pipeline->getRenderTarget().imageView;
 
-	vkCmdPipelineBarrier(m_commandBuffer, prevImageState.stageMask, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-						 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+		VkWriteDescriptorSet setWrite = {};
+		setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		setWrite.dstSet = m_descriptorSet;
+		setWrite.dstBinding = 0;
+		setWrite.descriptorCount = 1;
+		setWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		setWrite.pImageInfo = &imageInfo;
+
+		vkUpdateDescriptorSets(m_device->getDevice(), 1, &setWrite, 0, nullptr);
+
+		//Insert barrier to waits for output image to be rendered
+		VkImageMemoryBarrier imageBarrier = {};
+		imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageBarrier.srcAccessMask = prevImageState.accessFlags;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		imageBarrier.oldLayout = prevImageState.layout;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.image = pipeline->getRenderTarget().image;
+		imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBarrier.subresourceRange.baseArrayLayer = 0;
+		imageBarrier.subresourceRange.layerCount = 1;
+		imageBarrier.subresourceRange.baseMipLevel = 0;
+		imageBarrier.subresourceRange.levelCount = 1;
+
+		vkCmdPipelineBarrier(m_commandBuffer, prevImageState.stageMask, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+											  0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+	}
 
 	VkClearValue clearValue = { 0.1f, 0.4f, 0.7f, 1.0f };
 
@@ -545,24 +548,41 @@ void ScenePresenter::endFrame(const RaytracingPipeline& pipeline, VkRect2D rende
 	VkViewport viewport = { 0, 0, (float)m_width, (float)m_height, 0, 1 };
 	VkRect2D scissor = { { 0, 0 }, { (uint32_t)m_width, (uint32_t)m_height } };
 
-	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
-	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
 	vkCmdSetViewport(m_commandBuffer, 0, 1, &viewport);
 	vkCmdSetScissor(m_commandBuffer, 0, 1, &scissor);
 
-	vkCmdDraw(m_commandBuffer, 6, 1, 0, 0);
+	if (pipeline)
+	{
+		vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
+		vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+
+		vkCmdDraw(m_commandBuffer, 6, 1, 0, 0);
+	}
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), m_commandBuffer);
 
 	vkCmdEndRenderPass(m_commandBuffer);
 
-	imageBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	imageBarrier.dstAccessMask = 0;
-	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageBarrier.newLayout = prevImageState.layout;
+	if (pipeline)
+	{
+		VkImageMemoryBarrier imageBarrier = {};
+		imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		imageBarrier.dstAccessMask = 0;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.newLayout = prevImageState.layout;
+		imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.image = pipeline->getRenderTarget().image;
+		imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBarrier.subresourceRange.baseArrayLayer = 0;
+		imageBarrier.subresourceRange.layerCount = 1;
+		imageBarrier.subresourceRange.baseMipLevel = 0;
+		imageBarrier.subresourceRange.levelCount = 1;
 
-	vkCmdPipelineBarrier(m_commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-						 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+		vkCmdPipelineBarrier(m_commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+											  0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+	}
 
 	//Finish command buffer
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));

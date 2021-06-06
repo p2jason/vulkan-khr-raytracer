@@ -65,7 +65,7 @@ public:
 	void resize(int width, int height);
 
 	VkCommandBuffer beginFrame();
-	void endFrame(const RaytracingPipeline& pipeline, VkRect2D renderArea, ImageState prevImageState);
+	void endFrame(const RaytracingPipeline* pipeline, VkRect2D renderArea, ImageState prevImageState);
 
 	inline std::vector<const char*> determineDeviceExtensions(VkPhysicalDevice physicalDevice) { return m_swapchainFactory.determineDeviceExtensions(physicalDevice); }
 	inline std::vector<const char*> determineInstanceExtensions() { return m_swapchainFactory.determineInstanceExtensions(); }

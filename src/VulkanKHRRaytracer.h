@@ -24,12 +24,18 @@ private:
 
 	ScenePresenter m_presenter;
 
+	int m_selectedPipelineIndex = 0;
+
+	bool m_changedPipeline = false;
 	RaytracingPipeline* m_pipeline = nullptr;
 
 	bool m_reloadScene = false;
 	std::shared_ptr<Scene> m_scene = nullptr;
 private:
 	VulkanKHRRaytracer();
+
+	void handleReloadScene();
+	void handlePipelineChange();
 
 	void mainLoop();
 	void drawUI();

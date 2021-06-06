@@ -12,10 +12,28 @@
 #include "scene/pipelines/SamplerZooPipeline.h"
 #include "scene/SimpleRaytracingPipeling.h"
 
+typedef RaytracingPipeline* (*PipelineDefFunc)();
+
+template<typename T>
+RaytracingPipeline* createPipeline()
+{
+	return new T();
+}
+
 std::vector<const char*> s_validationLayers({ "VK_LAYER_KHRONOS_validation" });
 
+const char* s_pipelineNames[] = {
+	"Albedo + Shadow",
+	"Sampler Zoo"
+};
+
+PipelineDefFunc s_pipelineFunctions[] = {
+	&createPipeline<BasicRaytracingPipeline>,
+	&createPipeline<SamplerZooPipeline>
+};
+
 VulkanKHRRaytracer::VulkanKHRRaytracer() :
-	m_reloadScene(true)
+	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1)
 {
 
 }
@@ -52,13 +70,40 @@ void VulkanKHRRaytracer::start()
 	m_presenter.init(&m_device, m_window, m_startingWidth, m_startingHeight);
 
 	//Create pipeline
-	m_pipeline = new SamplerZooPipeline();
+	m_pipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
 
 	strcpy(m_scenePath, m_pipeline->getDefaultScene().c_str());
 
 	printf("Starting renderer...\n");
 
 	mainLoop();
+}
+
+void VulkanKHRRaytracer::handlePipelineChange()
+{
+	m_pipeline->destroyRenderTarget();
+	m_pipeline->destroy();
+
+	delete m_pipeline;
+
+	m_pipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
+	m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
+
+	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
+	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
+}
+
+void VulkanKHRRaytracer::handleReloadScene()
+{
+	m_pipeline->destroyRenderTarget();
+	m_pipeline->destroy();
+
+	m_scene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath);
+
+	m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
+
+	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
+	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
 }
 
 void VulkanKHRRaytracer::mainLoop()
@@ -80,18 +125,22 @@ void VulkanKHRRaytracer::mainLoop()
 
 		drawUI();
 
+		//Update pipeline
+		if (m_changedPipeline)
+		{
+			printf("Changing rendering backend to: '%s'\n", s_pipelineNames[m_selectedPipelineIndex]);
+
+			handlePipelineChange();
+
+			m_changedPipeline = false;
+		}
+
 		//Update scene
 		if (m_reloadScene)
 		{
-			m_pipeline->destroyRenderTarget();
-			m_pipeline->destroy();
+			printf("Changing scene to: '%s'\n", m_scenePath);
 
-			m_scene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath);
-
-			m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
-
-			m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
-			m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
+			handleReloadScene();
 
 			m_reloadScene = false;
 		}
@@ -103,7 +152,7 @@ void VulkanKHRRaytracer::mainLoop()
 		VkRect2D renderArea = { { 0, 0 }, { (uint32_t)viewportSize.x, (uint32_t)viewportSize.y } };
 		ImageState previousImageState = { VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_IMAGE_LAYOUT_GENERAL };
 
-		m_presenter.endFrame(*m_pipeline, renderArea, previousImageState);
+		m_presenter.endFrame(m_pipeline, renderArea, previousImageState);
 
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(1ms);
@@ -118,9 +167,7 @@ void VulkanKHRRaytracer::drawUI()
 
 	if (ImGui::Begin("Frame"))
 	{
-		//ImGui::SetWindowFontScale(2.0f);
-
-		if (ImGui::CollapsingHeader("Camera Details", 0))
+		if (ImGui::CollapsingHeader("Camera Details", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			//Resolution input
 			static int dimensions[2] = { m_renderTargetWidth, m_renderTargetHeight };
@@ -134,11 +181,9 @@ void VulkanKHRRaytracer::drawUI()
 				m_pipeline->destroyRenderTarget();
 				m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
 			}
-			
-			//
 		}
 
-		if (ImGui::CollapsingHeader("Scene", 0))
+		if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			if (ImGui::InputText("Scene path", m_scenePath, sizeof(m_scenePath) / sizeof(m_scenePath[0]) - 1, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
@@ -146,10 +191,16 @@ void VulkanKHRRaytracer::drawUI()
 			}
 		}
 
+		if (ImGui::CollapsingHeader("Rendering Backend", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (ImGui::Combo("Backend", &m_selectedPipelineIndex, s_pipelineNames, sizeof(s_pipelineNames) / sizeof(s_pipelineNames[0])))
+			{
+				m_changedPipeline = true;
+			}
+		}
+
 		ImGui::End();
 	}
-
-	//ImGui::ShowDemoWindow();
 
 	ImGui::Render();
 }
@@ -160,6 +211,8 @@ void VulkanKHRRaytracer::stop()
 	{
 		m_pipeline->destroyRenderTarget();
 		m_pipeline->destroy();
+
+		delete m_pipeline;
 	}
 
 	m_scene = nullptr;
