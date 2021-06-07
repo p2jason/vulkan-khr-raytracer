@@ -2,6 +2,8 @@
 
 #include "Common.h"
 
+#include <imgui.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -17,29 +19,20 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
 	//Load pipeline shaders
-	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rgen"));
-	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rmiss"));
-	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rchit"));
-	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo.rahit"));
+	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rgen");
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rmiss");
+	pipelineInfo.addHitGroupFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rchit", "asset://shaders/sampler_zoo/sampler_zoo.rahit", nullptr);
 
-	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/sampler_zoo/sampler_zoo_shadow.rmiss"));
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo_shadow.rmiss");
 
-	if (raygenModule == VK_NULL_HANDLE ||
-		missModule == VK_NULL_HANDLE ||
-		closestModule == VK_NULL_HANDLE ||
-		anyhitModule == VK_NULL_HANDLE ||
-		shadowMissModule == VK_NULL_HANDLE)
+	if (pipelineInfo.failedToLoad)
 	{
 		return false;
 	}
 
-	pipelineInfo.raygenModules.push_back(raygenModule);
-	pipelineInfo.missModules.push_back(missModule);
-	pipelineInfo.hitGroupModules.push_back({ closestModule, anyhitModule, VK_NULL_HANDLE });
-
-	pipelineInfo.missModules.push_back(shadowMissModule);
-
 	pipelineInfo.maxRecursionDepth = 2;
+
+	pipelineInfo.pushConstants.push_back({ VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_sampleCount) });
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {
@@ -134,6 +127,21 @@ void SamplerZooPipeline::destroyRenderTarget()
 	m_device->getRenderDevice()->destroyImage(m_renderTarget);
 }
 
+const char* SamplerZooPipeline::getDescription() const
+{
+	return "Renderer that demonstrates the difference between sampler types";
+}
+
+void SamplerZooPipeline::drawOptionsUI()
+{
+	ImGui::SetNextItemWidth(150);
+	
+	if (ImGui::InputInt("Sample count", &m_sampleCount, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
+	{
+		m_sampleCount = std::max(m_sampleCount, 1);
+	}
+}
+
 void SamplerZooPipeline::notifyCameraChange()
 {
 	float tanHalfFOV = tan(m_fov / 2.0f);
@@ -189,5 +197,6 @@ void SamplerZooPipeline::bind(VkCommandBuffer commandBuffer)
 		m_renderTargetInitialized = true;
 	}
 
+	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_sampleCount), &m_sampleCount);
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 1, 1, &m_descriptorSet, 0, nullptr);
 }

@@ -9,16 +9,25 @@
 #include <filesystem>
 #include <string>
 
-struct RTPipelineInfo
+struct HitGroupModules { VkShaderModule modules[3]; };
+
+class RTPipelineInfo
 {
+public:
 	std::vector<VkShaderModule> raygenModules;
 	std::vector<VkShaderModule> missModules;
-	std::vector<std::tuple<VkShaderModule, VkShaderModule, VkShaderModule>> hitGroupModules;
+	std::vector<HitGroupModules> hitGroupModules;
 
 	std::vector<VkDescriptorSetLayout> descSetLayouts;
 	std::vector<VkPushConstantRange> pushConstants;
 
 	int maxRecursionDepth = 1;
+
+	bool failedToLoad = false;
+public:
+	int addRaygenShaderFromPath(const RenderDevice* device, const char* raygenPath);
+	int addMissShaderFromPath(const RenderDevice* device, const char* missPath);
+	int addHitGroupFromPath(const RenderDevice* device, const char* closestHitPath, const char* anyhitPath = nullptr, const char* intersectionPath = nullptr);
 };
 
 class RaytracingPipeline
@@ -48,6 +57,8 @@ public:
 	virtual glm::ivec2 getRenderTargetSize() const = 0;
 
 	virtual std::string getDefaultScene() const = 0;
+	virtual const char* getDescription() const { return "No description"; }
+	virtual void drawOptionsUI() {}
 
 	inline glm::vec3 getCameraPosition() const { return m_cameraPosition; }
 	inline glm::quat getCameraRotation() const { return m_cameraRotation; }

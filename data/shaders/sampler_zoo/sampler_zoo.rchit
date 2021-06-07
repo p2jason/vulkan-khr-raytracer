@@ -17,6 +17,10 @@ layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 2, scalar) buffer VertexNBuffers { vec3 v[]; } normalBuffers[];
 layout(set = 0, binding = 4, scalar) buffer IndexBuffers { uvec3 i[]; } indexBuffers[];
 
+layout(push_constant) uniform PushConstants {
+	int sampleCount;
+};
+
 void main() {
 	//Pull vertices
 	uvec3 indices = indexBuffers[NONUNIFORM_MESH_IDX].i[gl_PrimitiveID];
@@ -35,10 +39,9 @@ void main() {
 	const vec3 lightPos = vec3(0, 4, 0);
 	const float lightRadius = 1.0;
 	
-	const int numSamples = 16;
 	float hitCount = 0;
 	
-	for (int i = 0; i < numSamples; ++i) {
+	for (int i = 0; i < sampleCount; ++i) {
 		vec2 value = 2.0 * halton_rng_generate_2d(payload.rng) - 1.0;
 		
 		vec3 targetPos = lightPos + lightRadius * vec3(value.x, 0, value.y);
@@ -62,5 +65,5 @@ void main() {
 	
 	float lightDistance = distance(lightPos, origin);
 	
-	payload.hitValue = vec3(14.0 / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(numSamples));
+	payload.hitValue = vec3(14.0 / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(sampleCount));
 }

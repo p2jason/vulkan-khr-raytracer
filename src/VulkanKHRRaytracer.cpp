@@ -12,6 +12,9 @@
 #include "scene/pipelines/SamplerZooPipeline.h"
 #include "scene/SimpleRaytracingPipeling.h"
 
+#undef max
+#undef min
+
 typedef RaytracingPipeline* (*PipelineDefFunc)();
 
 template<typename T>
@@ -81,27 +84,50 @@ void VulkanKHRRaytracer::start()
 
 void VulkanKHRRaytracer::handlePipelineChange()
 {
+	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
+	if (!newPipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene))
+	{
+		//TODO: Show error message on UI
+		printf("Failed to load new raytracing pipeline");
+		return;
+	}
+
 	m_pipeline->destroyRenderTarget();
 	m_pipeline->destroy();
 
 	delete m_pipeline;
 
-	m_pipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
-	m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
-
+	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
 	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
 }
 
 void VulkanKHRRaytracer::handleReloadScene()
 {
+	std::shared_ptr<Scene> newScene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath);
+
+	if (!newScene)
+	{
+		//TODO: Show error message on UI
+		printf("Failed to load new scene");
+		return;
+	}
+
+	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
+	if (!newPipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, newScene))
+	{
+		//TODO: Show error message on UI
+		printf("Failed to reload raytracing pipeline");
+		return;
+	}
+
+	//Reload pipeline
 	m_pipeline->destroyRenderTarget();
 	m_pipeline->destroy();
 
-	m_scene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath);
+	m_scene = newScene;
 
-	m_pipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene);
-
+	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
 	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
 }
@@ -167,6 +193,45 @@ void VulkanKHRRaytracer::drawUI()
 
 	if (ImGui::Begin("Frame"))
 	{
+		if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (ImGui::InputText("Scene path", m_scenePath, sizeof(m_scenePath) / sizeof(m_scenePath[0]) - 1, ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				m_reloadScene = true;
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Rendering Backend", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (ImGui::Button("Reload"))
+			{
+				m_changedPipeline = true;
+			}
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(std::max(std::min(200.0f, ImGui::GetContentRegionAvail().x), 100.0f));
+			if (ImGui::Combo("Backend", &m_selectedPipelineIndex, s_pipelineNames, sizeof(s_pipelineNames) / sizeof(s_pipelineNames[0])))
+			{
+				m_changedPipeline = true;
+			}
+
+			ImGui::Separator();
+
+			ImGui::Text("Description:");
+			ImGui::TextWrapped(m_pipeline->getDescription());
+			
+			ImGui::Separator();
+
+			if (ImGui::TreeNode("Options"))
+			{
+				m_pipeline->drawOptionsUI();
+
+				ImGui::TreePop();
+			}
+
+			ImGui::Spacing();
+		}
+
 		if (ImGui::CollapsingHeader("Camera Details", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			//Resolution input
@@ -183,24 +248,10 @@ void VulkanKHRRaytracer::drawUI()
 			}
 		}
 
-		if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			if (ImGui::InputText("Scene path", m_scenePath, sizeof(m_scenePath) / sizeof(m_scenePath[0]) - 1, ImGuiInputTextFlags_EnterReturnsTrue))
-			{
-				m_reloadScene = true;
-			}
-		}
-
-		if (ImGui::CollapsingHeader("Rendering Backend", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			if (ImGui::Combo("Backend", &m_selectedPipelineIndex, s_pipelineNames, sizeof(s_pipelineNames) / sizeof(s_pipelineNames[0])))
-			{
-				m_changedPipeline = true;
-			}
-		}
-
 		ImGui::End();
 	}
+
+	ImGui::ShowDemoWindow();
 
 	ImGui::Render();
 }

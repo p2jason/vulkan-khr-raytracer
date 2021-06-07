@@ -5,6 +5,12 @@
 
 #include "ProjectBase.h"
 
+struct ShaderSource
+{
+	const std::string code = "";
+	const bool wasLoadedSuccessfully = false;
+};
+
 class Resources
 {
 public:
@@ -23,14 +29,14 @@ public:
 		return std::string(path);
 	}
 
-	inline static std::string loadShader(const char* path)
+	inline static ShaderSource loadShader(const char* path)
 	{
 		std::string fullPath = resolvePath(path);
 
 		std::ifstream in(fullPath, std::ios::in | std::ios::binary);
 		if (!in)
 		{
-			return "";
+			return { "", false };
 		}
 
 		std::string contents;
@@ -42,7 +48,7 @@ public:
 		in.read(contents.data(), contents.size());
 		in.close();
 
-		return contents;
+		return { std::move(contents), true };
 	}
 
 	inline static std::string shaderIncludeDir()

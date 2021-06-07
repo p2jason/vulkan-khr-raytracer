@@ -4,6 +4,90 @@
 
 #include <unordered_set>
 
+int RTPipelineInfo::addRaygenShaderFromPath(const RenderDevice* device, const char* raygenPath)
+{
+	ShaderSource source = Resources::loadShader(raygenPath);
+
+	if (!source.wasLoadedSuccessfully)
+	{
+		failedToLoad = true;
+		return - 1;
+	}
+
+	VkShaderModule module = device->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, source.code);
+
+	if (module == VK_NULL_HANDLE)
+	{
+		failedToLoad = true;
+		return -1;
+	}
+
+	raygenModules.push_back(module);
+
+	return (int)raygenModules.size() - 1;
+}
+
+int RTPipelineInfo::addMissShaderFromPath(const RenderDevice* device, const char* missPath)
+{
+	ShaderSource source = Resources::loadShader(missPath);
+
+	if (!source.wasLoadedSuccessfully)
+	{
+		failedToLoad = true;
+		return -1;
+	}
+
+	VkShaderModule module = device->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, source.code);
+
+	if (module == VK_NULL_HANDLE)
+	{
+		failedToLoad = true;
+		return -1;
+	}
+
+	missModules.push_back(module);
+
+	return (int)missModules.size() - 1;
+}
+
+int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* closestHitPath, const char* anyHitPath, const char* intersectionPath)
+{
+	HitGroupModules group = { { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE } };
+
+	for (int i = 0; i < 3; ++i)
+	{
+		const char* path = i == 0 ? closestHitPath : (i == 1 ? anyHitPath : intersectionPath);
+
+		if (!path)
+		{
+			continue;
+		}
+
+		ShaderSource source = Resources::loadShader(path);
+
+		if (!source.wasLoadedSuccessfully)
+		{
+			failedToLoad = true;
+			return -1;
+		}
+
+		VkShaderStageFlagBits stage = i == 0 ? VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR : (i == 1 ? VK_SHADER_STAGE_ANY_HIT_BIT_KHR : VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
+		VkShaderModule module = device->compileShader(stage, source.code);
+
+		if (module == VK_NULL_HANDLE)
+		{
+			failedToLoad = true;
+			return -1;
+		}
+
+		group.modules[i] = module;
+	}
+
+	hitGroupModules.push_back(group);
+
+	return (int)hitGroupModules.size() - 1;
+}
+
 bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
@@ -82,7 +166,7 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 		shaderGroupCI.anyHitShader = VK_SHADER_UNUSED_KHR;
 		shaderGroupCI.intersectionShader = VK_SHADER_UNUSED_KHR;
 		
-		VkShaderModule closestHitModule = std::get<0>(pipelineInfo.hitGroupModules[i]);
+		VkShaderModule closestHitModule = pipelineInfo.hitGroupModules[i].modules[0];
 		if (closestHitModule != VK_NULL_HANDLE)
 		{
 			shaderGroupCI.closestHitShader = (uint32_t)stages.size();
@@ -91,7 +175,7 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 			modules.insert(stages.back().module);
 		}
 
-		VkShaderModule anyHitModule = std::get<1>(pipelineInfo.hitGroupModules[i]);
+		VkShaderModule anyHitModule = pipelineInfo.hitGroupModules[i].modules[1];
 		if (anyHitModule != VK_NULL_HANDLE)
 		{
 			shaderGroupCI.anyHitShader = (uint32_t)stages.size();
@@ -100,7 +184,7 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 			modules.insert(stages.back().module);
 		}
 
-		VkShaderModule intersectionModule = std::get<2>(pipelineInfo.hitGroupModules[i]);
+		VkShaderModule intersectionModule = pipelineInfo.hitGroupModules[i].modules[2];
 		if (intersectionModule != VK_NULL_HANDLE)
 		{
 			shaderGroupCI.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
@@ -126,6 +210,11 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 	rtPipelineCI.layout = m_layout;
 
 	VK_CHECK(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, cache, 1, &rtPipelineCI, nullptr, &m_pipeline));
+
+	if (m_pipeline == VK_NULL_HANDLE)
+	{
+		return false;
+	}
 
 	//Destroy shader modules that are not needed any more
 	for (std::unordered_set<VkShaderModule>::iterator it = modules.begin(); it != modules.end(); ++it)

@@ -144,12 +144,14 @@ public:
 		fs::path fullPath = fs::path(Resources::shaderIncludeDir()) / headerName;
 		std::string pathString = fullPath.generic_string();
 
-		if (!fs::exists(fullPath))
+		ShaderSource source = Resources::loadShader(pathString.c_str());
+
+		if (!source.wasLoadedSuccessfully)
 		{
 			return nullptr;
 		}
 
-		std::string* content = new std::string(Resources::loadShader(pathString.c_str()));
+		std::string* content = new std::string(source.code);
 
 		return new IncludeResult(pathString, content->c_str(), content->size(), (void*)content);
 	}

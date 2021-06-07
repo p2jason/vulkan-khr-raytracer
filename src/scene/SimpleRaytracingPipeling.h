@@ -32,6 +32,9 @@ public:
 
 	inline std::string getDefaultScene() const override { return "C:\\Users\\Jason\\Downloads\\sponza2.glb"; }
 
+	const char* getDescription() const override;
+	void drawOptionsUI() override;
+
 	inline Image getRenderTarget() const override { return m_renderTarget; }
 	inline glm::ivec2 getRenderTargetSize() const override { return glm::ivec2(m_width, m_height); }
 };

@@ -17,27 +17,16 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 	const RenderDevice* renderDevice = device->getRenderDevice();
 	
 	//Load pipeline shaders
-	VkShaderModule raygenModule = renderDevice->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rgen"));
-	VkShaderModule missModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rmiss"));
-	VkShaderModule closestModule = renderDevice->compileShader(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rchit"));
-	VkShaderModule anyhitModule = renderDevice->compileShader(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/simple.rahit"));
+	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/rtsimple/simple.rgen");
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/rtsimple/simple.rmiss");
+	pipelineInfo.addHitGroupFromPath(renderDevice, "asset://shaders/rtsimple/simple.rchit", "asset://shaders/rtsimple/simple.rahit", nullptr);
 
-	VkShaderModule shadowMissModule = renderDevice->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, Resources::loadShader("asset://shaders/rtsimple/shadow.rmiss"));
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/rtsimple/shadow.rmiss");
 
-	if (raygenModule == VK_NULL_HANDLE ||
-		missModule == VK_NULL_HANDLE ||
-		closestModule == VK_NULL_HANDLE ||
-		anyhitModule == VK_NULL_HANDLE ||
-		shadowMissModule == VK_NULL_HANDLE)
+	if (pipelineInfo.failedToLoad)
 	{
 		return false;
 	}
-
-	pipelineInfo.raygenModules.push_back(raygenModule);
-	pipelineInfo.missModules.push_back(missModule);
-	pipelineInfo.hitGroupModules.push_back({ closestModule, anyhitModule, VK_NULL_HANDLE });
-
-	pipelineInfo.missModules.push_back(shadowMissModule);
 
 	pipelineInfo.maxRecursionDepth = 2;
 
@@ -132,6 +121,16 @@ void BasicRaytracingPipeline::destroyRenderTarget()
 	}
 
 	m_device->getRenderDevice()->destroyImage(m_renderTarget);
+}
+
+const char* BasicRaytracingPipeline::getDescription() const
+{
+	return "Simple renderer that shows the albedo color of objects, plus shadows";
+}
+
+void BasicRaytracingPipeline::drawOptionsUI()
+{
+
 }
 
 void BasicRaytracingPipeline::notifyCameraChange()

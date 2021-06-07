@@ -31,8 +31,8 @@ private:
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
 
-	VkSurfaceFormatKHR m_format;
-	VkExtent2D m_extent;
+	VkSurfaceFormatKHR m_format = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+	VkExtent2D m_extent = { 0, 0 };
 
 	std::vector<VkImage> m_images;
 	std::vector<VkImageView> m_imageViews;

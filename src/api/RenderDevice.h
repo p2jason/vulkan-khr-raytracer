@@ -39,8 +39,8 @@ private:
 	VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 
 	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
-	VkPhysicalDeviceMemoryProperties m_memProperties;
-	VkPhysicalDeviceLimits m_limits;
+	VkPhysicalDeviceMemoryProperties m_memProperties = {};
+	VkPhysicalDeviceLimits m_limits = {};
 	uint32_t m_queueFamilyIndex = (uint32_t)-1;
 
 	VkDevice m_device = VK_NULL_HANDLE;
