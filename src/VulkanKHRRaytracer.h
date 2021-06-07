@@ -24,9 +24,11 @@ private:
 
 	ScenePresenter m_presenter;
 
-	int m_selectedPipelineIndex = 0;
+	bool m_showMessageDialog;
+	std::string m_errorMessage;
 
 	bool m_changedPipeline = false;
+	int m_selectedPipelineIndex = 0;
 	RaytracingPipeline* m_pipeline = nullptr;
 
 	bool m_reloadScene = false;

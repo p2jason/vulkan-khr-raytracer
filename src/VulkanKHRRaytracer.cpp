@@ -36,7 +36,8 @@ PipelineDefFunc s_pipelineFunctions[] = {
 };
 
 VulkanKHRRaytracer::VulkanKHRRaytracer() :
-	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1)
+	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1),
+	m_showMessageDialog(false)
 {
 
 }
@@ -87,8 +88,9 @@ void VulkanKHRRaytracer::handlePipelineChange()
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
 	if (!newPipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene))
 	{
-		//TODO: Show error message on UI
-		printf("Failed to load new raytracing pipeline");
+		m_errorMessage = "Failed to load new raytracing pipeline";
+		m_showMessageDialog = true;
+
 		return;
 	}
 
@@ -108,16 +110,18 @@ void VulkanKHRRaytracer::handleReloadScene()
 
 	if (!newScene)
 	{
-		//TODO: Show error message on UI
-		printf("Failed to load new scene");
+		m_errorMessage = "Failed to load new scene";
+		m_showMessageDialog = true;
+
 		return;
 	}
 
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
 	if (!newPipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, newScene))
 	{
-		//TODO: Show error message on UI
-		printf("Failed to reload raytracing pipeline");
+		m_errorMessage = "Failed to reload raytracing pipeline";
+		m_showMessageDialog = true;
+
 		return;
 	}
 
@@ -248,10 +252,34 @@ void VulkanKHRRaytracer::drawUI()
 			}
 		}
 
+		if (m_showMessageDialog)
+		{
+			ImGui::OpenPopup("Error Message");
+			m_showMessageDialog = false;
+		}
+
+		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSize(ImVec2(311, 0));//118
+
+		if (ImGui::BeginPopupModal("Error Message", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextWrapped(m_errorMessage.c_str());
+
+			ImGui::Separator();
+
+			if (ImGui::Button("Close"))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+
 		ImGui::End();
 	}
 
-	ImGui::ShowDemoWindow();
+	//ImGui::ShowDemoWindow();
 
 	ImGui::Render();
 }
