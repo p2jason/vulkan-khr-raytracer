@@ -8,6 +8,7 @@
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
+#include <assimp/ProgressHandler.hpp>
 
 #include <glm/gtx/transform.hpp>
 
@@ -37,6 +38,25 @@ if (arr.size() > 0) {									\
 	inf.pImageInfo = arr.data();						\
 	e.push_back(inf);									\
 }
+
+//#define PROGRESS_GUARD(p) std::lock_guard<std::mutex> guard(p->lock)
+//#define PROGRESS_TRANSACTION(p, x) if (p) { PROGRESS_GUARD(p); x; }
+
+class ProgressTracker : public Assimp::ProgressHandler
+{
+private:
+	std::shared_ptr<SceneLoadProgress> m_progress;
+public:
+	ProgressTracker(std::shared_ptr<SceneLoadProgress> progressVariable) :
+		m_progress(progressVariable) {}
+
+	bool Update(float percentage) override
+	{
+		m_progress->setStageProgress(percentage);
+
+		return true;
+	}
+};
 
 void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList,
 						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices, const std::vector<bool>& isMaterialOpaque)
@@ -340,7 +360,7 @@ std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkComm
 	return std::make_pair(texture, sampler);
 }
 
-void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation)
+void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation, std::shared_ptr<SceneLoadProgress> progress)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
@@ -376,9 +396,13 @@ void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& 
 				material.albedoIndex = (uint32_t)-1;
 			}
 
+			progress->setStageProgress((float)i / (scene->mNumMaterials + 1));
+
 			representation.materials.push_back(material);
 		}
 	});
+
+	progress->setStageProgress(1.0f);
 
 	for (size_t i = 0; i < stagingBuffers.size(); ++i)
 	{
@@ -536,8 +560,15 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	vkUpdateDescriptorSets(device, (uint32_t)setWrites.size(), setWrites.data(), 0, nullptr);
 }
 
-std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, const char* scenePath)
+std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, const char* scenePath, std::shared_ptr<SceneLoadProgress> progress)
 {
+	if (!progress)
+	{
+		progress = std::make_shared<SceneLoadProgress>();
+	}
+
+	progress->begin(4, "Importing scene");
+
 	//Import scene from file
 	std::cout << "Importing scene " << scenePath << "... ";
 
@@ -546,6 +577,8 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	auto start = std::chrono::high_resolution_clock::now();
 
 	Assimp::Importer importer;
+	importer.SetProgressHandler(new ProgressTracker(progress));
+
 	const aiScene* scene = importer.ReadFile(path.c_str(), aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_ConvertToLeftHanded);
 
 	auto end = std::chrono::high_resolution_clock::now();
@@ -558,19 +591,25 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 		return nullptr;
 	}
 
+	progress->nextStage("Loading materials");
+
 	std::shared_ptr<Scene> representation = std::make_shared<Scene>();
 	representation->device = device;
 
 	std::vector<uint32_t> materialIndices;
 
 	//Load materials
-	loadMaterials(device, scene, *representation);
+	loadMaterials(device, scene, *representation, progress);
+
+	progress->nextStage("Loading scene graph");
 
 	//Load scene graph (meshes)
 	loadSceneGraph(device, scene, *representation, materialIndices);
 
 	//Upload material mapping indices
 	uploadMaterialMappings(device, *representation, materialIndices);
+
+	progress->nextStage("Creating descriptors");
 
 	//Create scene descriptor sets
 	createSceneDescriptorSets(device, *representation, materialIndices);
@@ -608,6 +647,8 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	}
 
 	importer.FreeScene();
+
+	progress->finish();
 	
 	return representation;
 };

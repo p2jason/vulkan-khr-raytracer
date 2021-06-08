@@ -7,6 +7,8 @@
 #include "scene/SceneLoader.h"
 #include "scene/ScenePresenter.h"
 
+#include <mutex>
+
 class VulkanKHRRaytracer
 {
 private:
@@ -33,10 +35,15 @@ private:
 
 	bool m_reloadScene = false;
 	std::shared_ptr<Scene> m_scene = nullptr;
+
+	std::mutex m_frameLock;
+	bool m_skipPipeline = false;
+	bool m_showProgressDialog = false;
+	std::shared_ptr<SceneLoadProgress> m_sceneProgessTracker = nullptr;
 private:
 	VulkanKHRRaytracer();
 
-	void handleReloadScene();
+	void loadSceneDeffered();
 	void handlePipelineChange();
 
 	void mainLoop();

@@ -4,6 +4,8 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <memory>
+#include <mutex>
+#include <atomic>
 
 #include "api/RaytracingDevice.h"
 
@@ -22,6 +24,50 @@ struct MeshBuffers
 	Buffer indexBuffer;
 	VkDeviceSize indexOffset;
 	VkDeviceSize indexSize;
+};
+
+class SceneLoadProgress
+{
+public:
+	std::mutex lock;
+
+	int progressStage;
+	int numStages;
+
+	std::string stageDescription;
+	float stageProgess;
+public:
+	void begin(int stageCount, std::string firstDesc)
+	{
+		std::lock_guard<std::mutex> guard(lock);
+
+		numStages = stageCount;
+		stageDescription = firstDesc;
+	}
+
+	void setStageProgress(float p)
+	{
+		std::lock_guard<std::mutex> guard(lock);
+
+		stageProgess = p;
+	}
+
+	void nextStage(std::string desc)
+	{
+		std::lock_guard<std::mutex> guard(lock);
+
+		stageDescription = desc;
+		progressStage++;
+		stageProgess = 0.0f;
+	}
+
+	void finish()
+	{
+		std::lock_guard<std::mutex> guard(lock);
+
+		progressStage = numStages;
+		stageProgess = 1.0f;
+	}
 };
 
 class Scene
@@ -52,5 +98,5 @@ public:
 class SceneLoader
 {
 public:
-	static std::shared_ptr<Scene> loadScene(const RaytracingDevice* device, const char* scenePath);
+	static std::shared_ptr<Scene> loadScene(const RaytracingDevice* device, const char* scenePath, std::shared_ptr<SceneLoadProgress> progress = nullptr);
 };

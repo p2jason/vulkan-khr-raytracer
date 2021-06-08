@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <thread>
+#include <future>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -104,9 +105,11 @@ void VulkanKHRRaytracer::handlePipelineChange()
 	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
 }
 
-void VulkanKHRRaytracer::handleReloadScene()
+void VulkanKHRRaytracer::loadSceneDeffered()
 {
-	std::shared_ptr<Scene> newScene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath);
+	std::shared_ptr<Scene> newScene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath, m_sceneProgessTracker);
+
+	std::lock_guard<std::mutex> guard(m_frameLock);
 
 	if (!newScene)
 	{
@@ -134,6 +137,9 @@ void VulkanKHRRaytracer::handleReloadScene()
 	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
 	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
+
+	m_sceneProgessTracker = nullptr;
+	m_skipPipeline = false;
 }
 
 void VulkanKHRRaytracer::mainLoop()
@@ -153,6 +159,8 @@ void VulkanKHRRaytracer::mainLoop()
 			m_presenter.resize(viewportSize.x, viewportSize.y);
 		}
 
+		std::lock_guard<std::mutex> guard(m_frameLock);
+
 		drawUI();
 
 		//Update pipeline
@@ -170,19 +178,26 @@ void VulkanKHRRaytracer::mainLoop()
 		{
 			printf("Changing scene to: '%s'\n", m_scenePath);
 
-			handleReloadScene();
+			m_sceneProgessTracker = std::make_shared<SceneLoadProgress>();
+			m_skipPipeline = true;
+			m_showProgressDialog = true;
+
+			std::thread(&VulkanKHRRaytracer::loadSceneDeffered, this).detach();
 
 			m_reloadScene = false;
 		}
 
 		VkCommandBuffer commandBuffer = m_presenter.beginFrame();
 
-		m_pipeline->raytrace(commandBuffer);
+		if (!m_skipPipeline)
+		{
+			m_pipeline->raytrace(commandBuffer);
+		}
 
 		VkRect2D renderArea = { { 0, 0 }, { (uint32_t)viewportSize.x, (uint32_t)viewportSize.y } };
 		ImageState previousImageState = { VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_IMAGE_LAYOUT_GENERAL };
 
-		m_presenter.endFrame(m_pipeline, renderArea, previousImageState);
+		m_presenter.endFrame(!m_skipPipeline ? m_pipeline : nullptr, renderArea, previousImageState);
 
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(1ms);
@@ -202,6 +217,27 @@ void VulkanKHRRaytracer::drawUI()
 			if (ImGui::InputText("Scene path", m_scenePath, sizeof(m_scenePath) / sizeof(m_scenePath[0]) - 1, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				m_reloadScene = true;
+			}
+
+			bool disabled = m_pipeline == nullptr || m_pipeline->getDefaultScene().empty();
+
+			if (disabled)
+			{
+				ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+				ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+			}
+
+			if (ImGui::Button("Load default backend scene") && !disabled)
+			{
+				strncpy(m_scenePath, m_pipeline->getDefaultScene().c_str(), sizeof(m_scenePath) / sizeof(m_scenePath[0]));
+
+				m_reloadScene = true;
+			}
+
+			if (disabled)
+			{
+				ImGui::PopItemFlag();
+				ImGui::PopStyleVar();
 			}
 		}
 
@@ -252,17 +288,18 @@ void VulkanKHRRaytracer::drawUI()
 			}
 		}
 
+		//Message dialog
 		if (m_showMessageDialog)
 		{
-			ImGui::OpenPopup("Error Message");
+			ImGui::OpenPopup("Error message");
 			m_showMessageDialog = false;
 		}
 
 		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
 		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-		ImGui::SetNextWindowSize(ImVec2(311, 0));//118
+		ImGui::SetNextWindowSize(ImVec2(311, 0));
 
-		if (ImGui::BeginPopupModal("Error Message", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::BeginPopupModal("Error message", NULL, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			ImGui::TextWrapped(m_errorMessage.c_str());
 
@@ -276,10 +313,45 @@ void VulkanKHRRaytracer::drawUI()
 			ImGui::EndPopup();
 		}
 
+		//Progress dialog
+		if (m_showProgressDialog)
+		{
+			ImGui::OpenPopup("Loading scene");
+			m_showProgressDialog = false;
+		}
+
+		center = ImGui::GetMainViewport()->GetCenter();
+		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSize(ImVec2(311, 0));
+
+		if (ImGui::BeginPopupModal("Loading scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			if (m_sceneProgessTracker)
+			{
+				std::lock_guard<std::mutex> guard(m_sceneProgessTracker->lock);
+
+				ImGui::Text(m_sceneProgessTracker->stageDescription.c_str());
+				ImGui::ProgressBar((float)m_sceneProgessTracker->progressStage / m_sceneProgessTracker->numStages);
+
+				ImGui::Spacing();
+
+				ImGui::ProgressBar(m_sceneProgessTracker->stageProgess);
+
+				if (m_sceneProgessTracker->progressStage == m_sceneProgessTracker->numStages)
+				{
+					ImGui::CloseCurrentPopup();
+				}
+			}
+			else
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+
 		ImGui::End();
 	}
-
-	//ImGui::ShowDemoWindow();
 
 	ImGui::Render();
 }
