@@ -358,11 +358,43 @@ void VulkanKHRRaytracer::drawUI()
 
 			ImGui::EndPopup();
 		}
-
-		ImGui::End();
 	}
 
+	ImGui::End();
+
+	showPerformancePopup();
+
 	ImGui::Render();
+}
+
+void VulkanKHRRaytracer::showPerformancePopup()
+{
+ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+
+	float padding = 10.0f;
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	
+	ImVec2 work_pos = viewport->WorkPos;
+	ImVec2 work_size = viewport->WorkSize;
+
+	ImVec2 window_pos(work_pos.x + work_size.x - padding, work_pos.y + work_size.y - padding);
+	ImVec2 window_pos_pivot(1.0f, 1.0f);
+
+	ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
+	ImGui::SetNextWindowViewport(viewport->ID);
+	ImGui::SetNextWindowBgAlpha(0.35f);
+
+	bool alwaysTrue = true;
+
+	if (ImGui::Begin("Example: Simple overlay", &alwaysTrue, window_flags))
+	{
+		ImGui::Text("Performance overview");
+		ImGui::Separator();
+
+		ImGui::Text("Frame Time: %.1fms", m_presenter.getRenderTime() * 1000.0f);
+	}
+
+	ImGui::End();
 }
 
 void VulkanKHRRaytracer::stop()

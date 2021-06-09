@@ -50,6 +50,7 @@ private:
 
 	void mainLoop();
 	void drawUI();
+	void showPerformancePopup();
 public:
 	VulkanKHRRaytracer(const VulkanKHRRaytracer&) = delete;
 	~VulkanKHRRaytracer() {}

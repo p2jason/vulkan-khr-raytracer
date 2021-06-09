@@ -73,4 +73,6 @@ public:
 
 	inline std::vector<const char*> determineDeviceExtensions(VkPhysicalDevice physicalDevice) { return m_swapchainFactory.determineDeviceExtensions(physicalDevice); }
 	inline std::vector<const char*> determineInstanceExtensions() { return m_swapchainFactory.determineInstanceExtensions(); }
+
+	inline double getRenderTime() const { return m_renderTime; }
 };
