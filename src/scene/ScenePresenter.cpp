@@ -1,41 +1,9 @@
 #include "ScenePresenter.h"
 
+#include "Common.h"
+
 #include <backends/imgui_impl_vulkan.h>
 #include <backends/imgui_impl_glfw.h>
-
-const char* VERTEX_SHADER = R"(#version 450
-
-layout(location = 0) out vec2 texCoord;
-
-vec2 vertices[6] = vec2[](
-    vec2(-1.0, -1.0),
-    vec2(1.0, 1.0),
-    vec2(-1.0, 1.0),
-
-	vec2(-1.0, -1.0),
-    vec2(1.0, -1.0),
-    vec2(1.0, 1.0)
-);
-
-void main() {
-	texCoord = vertices[gl_VertexIndex];
-	gl_Position = vec4(texCoord, 0.0, 1.0);
-})";
-
-const char* FRAGMENT_SHADER = R"(#version 450
-
-layout(location = 0) in vec2 texCoord;
-
-layout(location = 0) out vec4 outColor;
-
-layout(set = 0, binding = 0) uniform sampler2D renderTarget;
-
-void main() {
-	vec2 uv = 0.5 * texCoord + 0.5;
-	vec3 color = texture(renderTarget, uv).rgb;
-
-	outColor = vec4(color, 1.0);
-})";
 
 void ScenePresenter::createRenderPass()
 {
@@ -86,8 +54,21 @@ void ScenePresenter::createRenderPass()
 
 void ScenePresenter::createPipeline()
 {
-	VkShaderModule vertexShader = m_device->compileShader(VK_SHADER_STAGE_VERTEX_BIT, std::string(VERTEX_SHADER));
-	VkShaderModule fragmentShader = m_device->compileShader(VK_SHADER_STAGE_FRAGMENT_BIT, std::string(FRAGMENT_SHADER));
+	ShaderSource vertexSource = Resources::loadShader("asset://shaders/post_processing/display_quad.vert");
+	ShaderSource fragmentSource = Resources::loadShader("asset://shaders/post_processing/display_quad.frag");
+
+	if (!vertexSource.wasLoadedSuccessfully || !fragmentSource.wasLoadedSuccessfully)
+	{
+		FATAL_ERROR("Failed to load display quad shaders");
+	}
+
+	VkShaderModule vertexShader = m_device->compileShader(VK_SHADER_STAGE_VERTEX_BIT, vertexSource.code);
+	VkShaderModule fragmentShader = m_device->compileShader(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentSource.code);
+
+	if (vertexShader == VK_NULL_HANDLE || fragmentShader == VK_NULL_HANDLE)
+	{
+		FATAL_ERROR("Failed to compile display quad shaders");
+	}
 
 	//Create sampler
 	VkSamplerCreateInfo samplerCI = {};
@@ -111,7 +92,8 @@ void ScenePresenter::createPipeline()
 
 	//Create descriptor set
 	VkDescriptorSetLayoutBinding setLayoutBindings[] = {
-		{ 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &m_sampler }
+		{ 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &m_sampler },
+		{ 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr }
 	};
 
 	VkDescriptorSetLayoutCreateInfo descSetLayoutCI = {};
@@ -422,6 +404,20 @@ void ScenePresenter::destroyImGui()
 	ImGui::DestroyContext();
 }
 
+void ScenePresenter::updateUniforms(int targetWidth, int targetHeight)
+{
+	int* mem = nullptr;
+	VK_CHECK(vkMapMemory(m_device->getDevice(), m_displayQuadData.memory, 0, 4 * sizeof(int), 0, (void**)&mem));
+
+	mem[0] = m_width;
+	mem[1] = m_height;
+
+	mem[2] = targetWidth;
+	mem[3] = targetHeight;
+
+	vkUnmapMemory(m_device->getDevice(), m_displayQuadData.memory);
+}
+
 void ScenePresenter::init(const RenderDevice* device, const Window& window, int initialWidth, int initialHeight)
 {
 	m_device = device;
@@ -433,6 +429,9 @@ void ScenePresenter::init(const RenderDevice* device, const Window& window, int 
 	m_device->getPhysicalDevicePropertes(&properties, nullptr);
 
 	m_timestampPeriod = properties.limits.timestampPeriod;
+
+	//Create uniform buffer
+	m_displayQuadData = device->createBuffer(4 * sizeof(int), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	//Initialize scene presenter 
 	createSwapchain();
@@ -447,6 +446,8 @@ void ScenePresenter::init(const RenderDevice* device, const Window& window, int 
 void ScenePresenter::destroy()
 {
 	destroyImGui();
+
+	m_device->destroyBuffer(m_displayQuadData);
 
 	vkDestroySampler(m_device->getDevice(), m_sampler, nullptr);
 
@@ -491,8 +492,10 @@ VkCommandBuffer ScenePresenter::beginFrame()
 	return m_commandBuffer;
 }
 
-void ScenePresenter::endFrame(const RaytracingPipeline* pipeline, VkRect2D renderArea, ImageState prevImageState)
+void ScenePresenter::endFrame(const RaytracingPipeline* pipeline, VkRect2D renderArea, ImageState prevImageState, int imageWidth, int imageHeight)
 {
+	updateUniforms(imageWidth, imageHeight);
+
 	vkCmdWriteTimestamp(m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPool, 1);
 
 	if (pipeline)
@@ -502,15 +505,27 @@ void ScenePresenter::endFrame(const RaytracingPipeline* pipeline, VkRect2D rende
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		imageInfo.imageView = pipeline->getRenderTarget().imageView;
 
-		VkWriteDescriptorSet setWrite = {};
-		setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		setWrite.dstSet = m_descriptorSet;
-		setWrite.dstBinding = 0;
-		setWrite.descriptorCount = 1;
-		setWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		setWrite.pImageInfo = &imageInfo;
+		VkDescriptorBufferInfo bufferInfo = {};
+		bufferInfo.offset = 0;
+		bufferInfo.range = 4 * sizeof(int);
+		bufferInfo.buffer = m_displayQuadData.buffer;
 
-		vkUpdateDescriptorSets(m_device->getDevice(), 1, &setWrite, 0, nullptr);
+		VkWriteDescriptorSet setWrite[2] = {};
+		setWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		setWrite[0].dstSet = m_descriptorSet;
+		setWrite[0].dstBinding = 0;
+		setWrite[0].descriptorCount = 1;
+		setWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		setWrite[0].pImageInfo = &imageInfo;
+
+		setWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		setWrite[1].dstSet = m_descriptorSet;
+		setWrite[1].dstBinding = 1;
+		setWrite[1].descriptorCount = 1;
+		setWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		setWrite[1].pBufferInfo = &bufferInfo;
+
+		vkUpdateDescriptorSets(m_device->getDevice(), sizeof(setWrite) / sizeof(setWrite[0]), setWrite, 0, nullptr);
 
 		//Insert barrier to waits for output image to be rendered
 		VkImageMemoryBarrier imageBarrier = {};
@@ -532,7 +547,7 @@ void ScenePresenter::endFrame(const RaytracingPipeline* pipeline, VkRect2D rende
 											  0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
 	}
 
-	VkClearValue clearValue = { 0.1f, 0.4f, 0.7f, 1.0f };
+	VkClearValue clearValue = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;

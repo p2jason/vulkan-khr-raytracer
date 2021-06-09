@@ -74,6 +74,14 @@ void VulkanKHRRaytracer::start()
 	//Create scene presenter
 	m_presenter.init(&m_device, m_window, m_startingWidth, m_startingHeight);
 
+	//Create pipeline cache
+	VkPipelineCacheCreateInfo pipelineCacheCI = {};
+	pipelineCacheCI.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+	pipelineCacheCI.initialDataSize = 0;
+	pipelineCacheCI.pInitialData = nullptr;
+
+	VK_CHECK(vkCreatePipelineCache(m_device.getDevice(), &pipelineCacheCI, nullptr, &m_pipelineCache));
+
 	//Create pipeline
 	m_pipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
 
@@ -87,7 +95,7 @@ void VulkanKHRRaytracer::start()
 void VulkanKHRRaytracer::handlePipelineChange()
 {
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
-	if (!newPipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, m_scene))
+	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, m_scene))
 	{
 		m_errorMessage = "Failed to load new raytracing pipeline";
 		m_showMessageDialog = true;
@@ -120,14 +128,14 @@ void VulkanKHRRaytracer::loadSceneDeffered()
 	}
 
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
-	if (!newPipeline->init(&m_raytracingDevice, VK_NULL_HANDLE, newScene))
+	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, newScene))
 	{
 		m_errorMessage = "Failed to reload raytracing pipeline";
 		m_showMessageDialog = true;
 
 		return;
 	}
-
+	
 	//Reload pipeline
 	m_pipeline->destroyRenderTarget();
 	m_pipeline->destroy();
@@ -146,6 +154,7 @@ void VulkanKHRRaytracer::mainLoop()
 {
 	glm::ivec2 viewportSize = m_window.getViewportSize();
 
+	int i = 0;
 	while (!m_window.isCloseRequested())
 	{
 		m_window.pollEvents();
@@ -197,7 +206,7 @@ void VulkanKHRRaytracer::mainLoop()
 		VkRect2D renderArea = { { 0, 0 }, { (uint32_t)viewportSize.x, (uint32_t)viewportSize.y } };
 		ImageState previousImageState = { VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_IMAGE_LAYOUT_GENERAL };
 
-		m_presenter.endFrame(!m_skipPipeline ? m_pipeline : nullptr, renderArea, previousImageState);
+		m_presenter.endFrame(!m_skipPipeline ? m_pipeline : nullptr, renderArea, previousImageState, m_renderTargetWidth, m_renderTargetHeight);
 
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(1ms);
@@ -358,6 +367,11 @@ void VulkanKHRRaytracer::drawUI()
 
 void VulkanKHRRaytracer::stop()
 {
+	if (m_pipelineCache != VK_NULL_HANDLE)
+	{
+		vkDestroyPipelineCache(m_device.getDevice(), m_pipelineCache, nullptr);
+	}
+
 	if (m_pipeline)
 	{
 		m_pipeline->destroyRenderTarget();

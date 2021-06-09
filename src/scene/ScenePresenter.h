@@ -34,6 +34,8 @@ private:
 	VkFence m_renderFinishedFence = VK_NULL_HANDLE;
 	uint32_t m_imageIndex = (uint32_t)-1;
 
+	Buffer m_displayQuadData;
+
 	float m_timestampPeriod = 0;
 	double m_renderTime = 0;
 
@@ -56,6 +58,8 @@ private:
 
 	void initImGui(const Window& window);
 	void destroyImGui();
+
+	void updateUniforms(int targetWidth, int targetHeight);
 public:
 	ScenePresenter() {}
 
@@ -65,7 +69,7 @@ public:
 	void resize(int width, int height);
 
 	VkCommandBuffer beginFrame();
-	void endFrame(const RaytracingPipeline* pipeline, VkRect2D renderArea, ImageState prevImageState);
+	void endFrame(const RaytracingPipeline* pipeline, VkRect2D renderArea, ImageState prevImageState, int imageWidth, int imageHeight);
 
 	inline std::vector<const char*> determineDeviceExtensions(VkPhysicalDevice physicalDevice) { return m_swapchainFactory.determineDeviceExtensions(physicalDevice); }
 	inline std::vector<const char*> determineInstanceExtensions() { return m_swapchainFactory.determineInstanceExtensions(); }
