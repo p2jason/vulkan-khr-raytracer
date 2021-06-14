@@ -113,7 +113,7 @@ void VulkanKHRRaytracer::handlePipelineChange()
 	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
 }
 
-void VulkanKHRRaytracer::loadSceneDeffered()
+void VulkanKHRRaytracer::loadSceneDeferred()
 {
 	std::shared_ptr<Scene> newScene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath, m_sceneProgessTracker);
 
@@ -154,7 +154,6 @@ void VulkanKHRRaytracer::mainLoop()
 {
 	glm::ivec2 viewportSize = m_window.getViewportSize();
 
-	int i = 0;
 	while (!m_window.isCloseRequested())
 	{
 		m_window.pollEvents();
@@ -191,7 +190,7 @@ void VulkanKHRRaytracer::mainLoop()
 			m_skipPipeline = true;
 			m_showProgressDialog = true;
 
-			std::thread(&VulkanKHRRaytracer::loadSceneDeffered, this).detach();
+			std::thread(&VulkanKHRRaytracer::loadSceneDeferred, this).detach();
 
 			m_reloadScene = false;
 		}
@@ -268,7 +267,7 @@ void VulkanKHRRaytracer::drawUI()
 
 			ImGui::Text("Description:");
 			ImGui::TextWrapped(m_pipeline->getDescription());
-			
+
 			ImGui::Separator();
 
 			if (ImGui::TreeNode("Options"))
@@ -369,7 +368,7 @@ void VulkanKHRRaytracer::drawUI()
 
 void VulkanKHRRaytracer::showPerformancePopup()
 {
-ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
 
 	float padding = 10.0f;
 	ImGuiViewport* viewport = ImGui::GetMainViewport();

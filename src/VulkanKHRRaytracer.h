@@ -45,7 +45,7 @@ private:
 private:
 	VulkanKHRRaytracer();
 
-	void loadSceneDeffered();
+	void loadSceneDeferred();
 	void handlePipelineChange();
 
 	void mainLoop();
