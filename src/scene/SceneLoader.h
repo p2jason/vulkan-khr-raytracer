@@ -37,6 +37,8 @@ public:
 	std::string stageDescription;
 	float stageProgess;
 public:
+	SceneLoadProgress() : progressStage(0), numStages(1), stageProgess(0.0f) {}
+
 	void begin(int stageCount, std::string firstDesc)
 	{
 		std::lock_guard<std::mutex> guard(lock);

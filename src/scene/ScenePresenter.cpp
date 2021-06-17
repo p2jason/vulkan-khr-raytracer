@@ -604,6 +604,8 @@ void ScenePresenter::endFrame(const RaytracingPipeline* pipeline, VkRect2D rende
 
 	vkResetQueryPool(m_device->getDevice(), m_queryPool, 0, 2);
 
+	std::lock_guard<std::mutex> guard(*m_device->getQueueMutex());
+
 	m_device->submit({ m_commandBuffer }, { { m_imageAvailableSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT } }, { m_renderCompleteSemaphore }, m_renderFinishedFence);
 
 	m_swapchain.present(m_device->getQueue(), m_imageIndex, { m_renderCompleteSemaphore });

@@ -694,6 +694,8 @@ void RenderDevice::executeCommands(int bufferCount, const std::function<void(VkC
 		VK_CHECK(vkEndCommandBuffer(commandBuffers[i]));
 	}
 
+	std::lock_guard<std::mutex> guard(*m_queueSubmitMutex);
+
 	//Submit comamnd buffers
 	submit(commandBuffers, {}, {}, buildCompleteFence);
 

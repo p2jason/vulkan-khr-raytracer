@@ -206,9 +206,6 @@ void VulkanKHRRaytracer::mainLoop()
 		ImageState previousImageState = { VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_IMAGE_LAYOUT_GENERAL };
 
 		m_presenter.endFrame(!m_skipPipeline ? m_pipeline : nullptr, renderArea, previousImageState, m_renderTargetWidth, m_renderTargetHeight);
-
-		using namespace std::chrono_literals;
-		std::this_thread::sleep_for(1ms);
 	}
 }
 

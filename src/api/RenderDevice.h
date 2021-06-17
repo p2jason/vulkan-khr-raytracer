@@ -4,6 +4,7 @@
 #include <iostream>
 #include <functional>
 #include <string>
+#include <mutex>
 
 #include <volk.h>
 
@@ -46,8 +47,10 @@ private:
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkQueue m_queue = VK_NULL_HANDLE;
 	VkCommandPool m_transientPool = VK_NULL_HANDLE;
+
+	std::unique_ptr<std::mutex> m_queueSubmitMutex;
 public:
-	RenderDevice() {}
+	RenderDevice() : m_queueSubmitMutex(std::make_unique<std::mutex>()) {}
 
 	void createInstance(std::vector<const char*> extensions, std::vector<const char*> validationLayers, bool enableDebugMessenger);
 	void createSurface(const Window& window);
@@ -80,6 +83,9 @@ public:
 
 	inline VkSurfaceKHR getSurface() const { return m_surface; }
 	inline VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
+
+	inline std::unique_ptr<std::mutex>& getQueueMutex() { return m_queueSubmitMutex; }
+	inline const std::unique_ptr<std::mutex>& getQueueMutex() const { return m_queueSubmitMutex; }
 };
 
 #define VK_CHECK(x) checkVK(x, __FILE__, __LINE__)
@@ -133,6 +139,10 @@ inline bool checkVK(VkResult result, const char* file, unsigned int line)
 		}
 
 		std::cout << "Vulkan Error(" << resultName << "): " << file << " @ " << line << std::endl;
+
+#ifndef NDEBUG
+		__debugbreak();
+#endif
 
 		return false;
 	}
