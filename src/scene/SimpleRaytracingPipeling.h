@@ -20,7 +20,7 @@ private:
 
 	bool m_renderTargetInitialized = false;
 private:
-	bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo) override;
+	bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions) override;
 	void clean(const RaytracingDevice* device) override;
 
 	void bind(VkCommandBuffer commandBuffer) override;

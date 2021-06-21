@@ -10,6 +10,8 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <backends/imgui_impl_glfw.h>
 
+#include "api/Window.h"
+
 #include "scene/pipelines/SamplerZooPipeline.h"
 #include "scene/SimpleRaytracingPipeling.h"
 
@@ -38,7 +40,7 @@ PipelineDefFunc s_pipelineFunctions[] = {
 
 VulkanKHRRaytracer::VulkanKHRRaytracer() :
 	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1),
-	m_showMessageDialog(false)
+	m_showMessageDialog(false), m_reloadOptions(nullptr)
 {
 
 }
@@ -95,7 +97,7 @@ void VulkanKHRRaytracer::start()
 void VulkanKHRRaytracer::handlePipelineChange()
 {
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
-	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, m_scene))
+	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, m_scene, m_reloadOptions))
 	{
 		m_errorMessage = "Failed to load new raytracing pipeline";
 		m_showMessageDialog = true;
@@ -118,7 +120,7 @@ void VulkanKHRRaytracer::loadSceneDeferred()
 	std::shared_ptr<Scene> newScene = SceneLoader::loadScene(&m_raytracingDevice, m_scenePath, m_sceneProgessTracker);
 
 	std::lock_guard<std::mutex> guard(m_frameLock);
-
+	
 	if (!newScene)
 	{
 		m_errorMessage = "Failed to load new scene";
@@ -170,6 +172,15 @@ void VulkanKHRRaytracer::mainLoop()
 		std::lock_guard<std::mutex> guard(m_frameLock);
 
 		drawUI();
+
+		//Check reloaded pipeline
+		if (m_pipeline->shouldReload())
+		{
+			m_reloadOptions = m_pipeline->getReloadOptions();
+
+			m_pipeline->notifyReloaded();
+			m_changedPipeline = true;
+		}
 
 		//Update pipeline
 		if (m_changedPipeline)
@@ -257,6 +268,7 @@ void VulkanKHRRaytracer::drawUI()
 			ImGui::SetNextItemWidth(std::max(std::min(200.0f, ImGui::GetContentRegionAvail().x), 100.0f));
 			if (ImGui::Combo("Backend", &m_selectedPipelineIndex, s_pipelineNames, sizeof(s_pipelineNames) / sizeof(s_pipelineNames[0])))
 			{
+				m_reloadOptions = nullptr;
 				m_changedPipeline = true;
 			}
 

@@ -14,16 +14,38 @@ struct CameraData
 	glm::vec3 position;
 };
 
-bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo)
+const char* s_samplerNames[] = {
+	"White Noise",
+	"Halton"
+};
+
+const char* s_samplerDefs[] = {
+	"RNG_USE_WHITE",
+	"RNG_USE_HALTON"
+};
+
+bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
-	//Load pipeline shaders
-	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rgen");
-	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rmiss");
-	pipelineInfo.addHitGroupFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rchit", "asset://shaders/sampler_zoo/sampler_zoo.rahit", nullptr);
+	//Load options
+	if (reloadOptions)
+	{
+		std::shared_ptr<std::pair<int, int>> options = std::static_pointer_cast<std::pair<int, int>>(reloadOptions);
 
-	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo_shadow.rmiss");
+		m_sampleCount = options->first;
+		m_samplerIndex = options->second;
+	}
+
+	//Load pipeline shaders
+	std::vector<std::string> definitions = { s_samplerDefs[m_samplerIndex] };
+
+	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rgen", definitions);
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rmiss", definitions);
+	pipelineInfo.addHitGroupFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rchit", "asset://shaders/sampler_zoo/sampler_zoo.rahit", nullptr,
+													definitions, definitions);
+
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo_shadow.rmiss", definitions);
 
 	if (pipelineInfo.failedToLoad)
 	{
@@ -134,8 +156,13 @@ const char* SamplerZooPipeline::getDescription() const
 
 void SamplerZooPipeline::drawOptionsUI()
 {
+	ImGui::SetNextItemWidth(std::max(std::min(200.0f, ImGui::GetContentRegionAvail().x), 100.0f));
+	if (ImGui::Combo("Sampler", &m_samplerIndex, s_samplerNames, sizeof(s_samplerNames) / sizeof(s_samplerNames[0])))
+	{
+		reloadSelf();
+	}
+
 	ImGui::SetNextItemWidth(150);
-	
 	if (ImGui::InputInt("Sample count", &m_sampleCount, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
 	{
 		m_sampleCount = std::max(m_sampleCount, 1);

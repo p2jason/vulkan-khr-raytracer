@@ -32,6 +32,7 @@ private:
 	bool m_changedPipeline = false;
 	int m_selectedPipelineIndex = 0;
 	RaytracingPipeline* m_pipeline = nullptr;
+	std::shared_ptr<void> m_reloadOptions = nullptr;
 
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
 

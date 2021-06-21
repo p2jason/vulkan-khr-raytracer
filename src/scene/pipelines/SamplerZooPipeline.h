@@ -18,10 +18,11 @@ private:
 
 	float m_fov = 70.0f;
 	int m_sampleCount = 16;
+	int m_samplerIndex = 0;
 
 	bool m_renderTargetInitialized = false;
 private:
-	bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo) override;
+	bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions) override;
 	void clean(const RaytracingDevice* device) override;
 
 	void bind(VkCommandBuffer commandBuffer) override;
@@ -38,4 +39,6 @@ public:
 
 	inline Image getRenderTarget() const override { return m_renderTarget; }
 	inline glm::ivec2 getRenderTargetSize() const override { return glm::ivec2(m_width, m_height); }
+
+	std::shared_ptr<void> getReloadOptions() const override { return std::make_shared<std::pair<int, int>>(m_sampleCount, m_samplerIndex); }
 };

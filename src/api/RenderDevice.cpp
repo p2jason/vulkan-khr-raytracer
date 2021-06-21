@@ -3,6 +3,7 @@
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
+#include <sstream>
 
 #include <glslang/Public/ShaderLang.h>
 #include <SPIRV/GlslangToSpv.h>
@@ -707,7 +708,7 @@ void RenderDevice::executeCommands(int bufferCount, const std::function<void(VkC
 	vkDestroyFence(m_device, buildCompleteFence, nullptr);
 }
 
-VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, const std::string& source) const
+VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, const std::string& source, const std::vector<std::string>& definitions) const
 {
 	using namespace glslang;
 
@@ -767,6 +768,15 @@ VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, con
 		return VK_NULL_HANDLE;
 	}
 	
+	std::stringstream ss;
+
+	for (std::string define : definitions)
+	{
+		ss << "#define " << define << " 1\n";
+	}
+
+	std::string preamble = ss.str();
+
 	//Compile shader
 	EShMessages messages = (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules);
 
@@ -777,7 +787,8 @@ VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, con
 	shader->setEnvInput(EShSourceGlsl, language, EShClientVulkan, defaultVersion);
 	shader->setEnvClient(EShClientVulkan, EShTargetVulkan_1_2);
 	shader->setEnvTarget(EshTargetSpv, EShTargetSpv_1_5);
-	
+	shader->setPreamble(preamble.c_str());
+
 	ShaderIncluder includer;
 	if (!shader->parse(&DefaultTBuiltInResource, defaultVersion, false, messages, includer))
 	{

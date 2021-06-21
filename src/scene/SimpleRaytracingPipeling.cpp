@@ -12,7 +12,7 @@ struct CameraData
 	glm::vec3 position;
 };
 
-bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo)
+bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 	

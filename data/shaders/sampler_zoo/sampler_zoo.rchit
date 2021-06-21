@@ -42,7 +42,11 @@ void main() {
 	float hitCount = 0;
 	
 	for (int i = 0; i < sampleCount; ++i) {
+#ifdef RNG_USE_HALTON
 		vec2 value = 2.0 * halton_rng_generate_2d(payload.rng) - 1.0;
+#else
+		vec2 value = 2.0 * white_rng_generate_2d(payload.rng) - 1.0;
+#endif
 		
 		vec3 targetPos = lightPos + lightRadius * vec3(value.x, 0, value.y);
 		

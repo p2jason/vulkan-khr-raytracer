@@ -5,7 +5,11 @@
 
 struct SamplerZooHitPayload {
 	vec3 hitValue;
+#ifdef RNG_USE_HALTON
 	HaltonRngState rng;
+#else
+	WhiteRngState rng;
+#endif	
 };
 
 #endif

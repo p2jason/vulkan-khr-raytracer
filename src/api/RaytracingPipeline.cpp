@@ -4,7 +4,7 @@
 
 #include <unordered_set>
 
-int RTPipelineInfo::addRaygenShaderFromPath(const RenderDevice* device, const char* raygenPath)
+int RTPipelineInfo::addRaygenShaderFromPath(const RenderDevice* device, const char* raygenPath, std::vector<std::string> definitions)
 {
 	ShaderSource source = Resources::loadShader(raygenPath);
 
@@ -14,7 +14,7 @@ int RTPipelineInfo::addRaygenShaderFromPath(const RenderDevice* device, const ch
 		return - 1;
 	}
 
-	VkShaderModule module = device->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, source.code);
+	VkShaderModule module = device->compileShader(VK_SHADER_STAGE_RAYGEN_BIT_KHR, source.code, definitions);
 
 	if (module == VK_NULL_HANDLE)
 	{
@@ -27,7 +27,7 @@ int RTPipelineInfo::addRaygenShaderFromPath(const RenderDevice* device, const ch
 	return (int)raygenModules.size() - 1;
 }
 
-int RTPipelineInfo::addMissShaderFromPath(const RenderDevice* device, const char* missPath)
+int RTPipelineInfo::addMissShaderFromPath(const RenderDevice* device, const char* missPath, std::vector<std::string> definitions)
 {
 	ShaderSource source = Resources::loadShader(missPath);
 
@@ -37,7 +37,7 @@ int RTPipelineInfo::addMissShaderFromPath(const RenderDevice* device, const char
 		return -1;
 	}
 
-	VkShaderModule module = device->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, source.code);
+	VkShaderModule module = device->compileShader(VK_SHADER_STAGE_MISS_BIT_KHR, source.code, definitions);
 
 	if (module == VK_NULL_HANDLE)
 	{
@@ -50,7 +50,8 @@ int RTPipelineInfo::addMissShaderFromPath(const RenderDevice* device, const char
 	return (int)missModules.size() - 1;
 }
 
-int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* closestHitPath, const char* anyHitPath, const char* intersectionPath)
+int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* closestHitPath, const char* anyHitPath, const char* intersectionPath,
+																	std::vector<std::string> closestHitDefs, std::vector<std::string> anyHitDefs, std::vector<std::string> intersectionDefs)
 {
 	HitGroupModules group = { { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE } };
 
@@ -71,8 +72,10 @@ int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* 
 			return -1;
 		}
 
+		const std::vector<std::string>& definitions = i == 0 ? closestHitDefs : (i == 1 ? anyHitDefs : intersectionDefs);
 		VkShaderStageFlagBits stage = i == 0 ? VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR : (i == 1 ? VK_SHADER_STAGE_ANY_HIT_BIT_KHR : VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
-		VkShaderModule module = device->compileShader(stage, source.code);
+
+		VkShaderModule module = device->compileShader(stage, source.code, definitions);
 
 		if (module == VK_NULL_HANDLE)
 		{
@@ -88,7 +91,7 @@ int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* 
 	return (int)hitGroupModules.size() - 1;
 }
 
-bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene)
+bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
 	VkDevice device = renderDevice->getDevice();
@@ -98,7 +101,7 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 
 	//Get pipeline info
 	RTPipelineInfo pipelineInfo;
-	if (!create(raytracingDevice, pipelineInfo))
+	if (!create(raytracingDevice, pipelineInfo, reloadOptions))
 	{
 		return false;
 	}
