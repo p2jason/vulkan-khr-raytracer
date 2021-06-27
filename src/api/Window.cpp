@@ -7,6 +7,8 @@ void errorCallback(int error, const char* description)
 	std::cout << "GLFW Error: " << description << std::endl;
 }
 
+WindowInput Window::windowInput = {};
+
 void Window::init(const char* title, int width, int height)
 {
 	if (!glfwInit())
@@ -28,6 +30,46 @@ void Window::init(const char* title, int width, int height)
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 	m_window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
+	glfwSetWindowUserPointer(m_window, &windowInput);
+
+	glfwSetKeyCallback(m_window, [](GLFWwindow* window, int key, int scancode, int action, int mods)
+	{
+		WindowInput* input = (WindowInput*)glfwGetWindowUserPointer(window);
+
+		if (action != GLFW_RELEASE)
+		{
+			input->pressedKeys.insert(key);
+		}
+		else
+		{
+			input->pressedKeys.erase(key);
+		}
+	});
+
+	glfwSetCursorPosCallback(m_window, [](GLFWwindow* window, double xpos, double ypos)
+	{
+		WindowInput* input = (WindowInput*)glfwGetWindowUserPointer(window);
+		input->mouseDeltaX = xpos - input->mouseX;
+		input->mouseDeltaY = ypos - input->mouseY;
+
+		input->mouseX = xpos;
+		input->mouseY = ypos;
+	});
+
+	glfwSetMouseButtonCallback(m_window, [](GLFWwindow* window, int button, int action, int mods)
+	{
+		WindowInput* input = (WindowInput*)glfwGetWindowUserPointer(window);
+
+		if (action != GLFW_RELEASE)
+		{
+			input->pressedMouseButtons.insert(button);
+		}
+		else
+		{
+			input->pressedMouseButtons.erase(button);
+		}
+	});
 
 	glfwShowWindow(m_window);
 }
@@ -68,6 +110,19 @@ VkSurfaceKHR Window::createSurface(VkInstance instance) const
 	}
 
 	return surface;
+}
+
+void Window::showCursor(bool show)
+{
+	glfwSetInputMode(m_window, GLFW_CURSOR, show ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
+}
+
+void Window::setMousePos(glm::vec2 position)
+{
+	windowInput.mouseX = position.x;
+	windowInput.mouseY = position.y;
+
+	glfwSetCursorPos(m_window, position.x, position.y);
 }
 
 void Window::terminate()
