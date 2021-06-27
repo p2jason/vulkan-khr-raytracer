@@ -30,7 +30,7 @@ public:
 	void createRenderTarget(int width, int height);
 	void destroyRenderTarget();
 
-	inline std::string getDefaultScene() const override { return "C:\\Users\\Jason\\Downloads\\sponza2.glb"; }
+	inline std::string getDefaultScene() const override { return "C:\\Users\\Jason\\Downloads\\sponza\\sponza.obj"; }
 
 	const char* getDescription() const override;
 	void drawOptionsUI() override;

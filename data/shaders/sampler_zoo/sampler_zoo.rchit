@@ -33,7 +33,7 @@ void main() {
 	float w = 1.0 - attribs.x - attribs.y;
 	
 	vec3 normal = normalize(normal0 * w + normal1 * attribs.x + normal2 * attribs.y);
-	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
+	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * NORMAL_EPSILON;
 	
 	//Compute light coverage
 	const vec3 lightPos = vec3(0, 4, 0);
@@ -57,7 +57,7 @@ void main() {
 		
 		//Compute shadow hit
 		uint rayFlags = gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT;
-		const float tMin = 0.001;
+		const float tMin = NORMAL_EPSILON;
 		
 		isShadowed = true;
 		traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 1, origin, tMin, toLight, lightDistance, 1);

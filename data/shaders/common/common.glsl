@@ -7,6 +7,8 @@
 
 #define NONUNIFORM_MESH_IDX (nonuniformEXT(gl_InstanceCustomIndexEXT))
 
+#define NORMAL_EPSILON (0.00001)
+
 struct Vertex
 {
 	//TODO: Split Vertex into SoA instead of AoS to allows for accessing only specific elements

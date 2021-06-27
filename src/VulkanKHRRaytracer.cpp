@@ -39,10 +39,10 @@ PipelineDefFunc s_pipelineFunctions[] = {
 };
 
 VulkanKHRRaytracer::VulkanKHRRaytracer() :
-	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1),
-	m_showMessageDialog(false), m_reloadOptions(nullptr)
+	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(0),
+	m_showMessageDialog(false), m_reloadOptions(nullptr), m_skipPipeline(true)
 {
-
+	m_camera = std::make_shared<Camera>(&m_window);
 }
 
 void VulkanKHRRaytracer::start()
@@ -112,7 +112,7 @@ void VulkanKHRRaytracer::handlePipelineChange()
 
 	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
-	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
+	m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
 }
 
 void VulkanKHRRaytracer::loadSceneDeferred()
@@ -146,7 +146,10 @@ void VulkanKHRRaytracer::loadSceneDeferred()
 
 	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
-	m_pipeline->setCameraData(m_scene->cameraPosition, m_scene->cameraRotation);
+
+	m_camera->setPosition(glm::vec3(0, 4, 0));
+	m_camera->setRotation(glm::identity<glm::quat>());
+	m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
 
 	m_sceneProgessTracker = nullptr;
 	m_skipPipeline = false;
@@ -156,9 +159,22 @@ void VulkanKHRRaytracer::mainLoop()
 {
 	glm::ivec2 viewportSize = m_window.getViewportSize();
 
+	auto lastTime = std::chrono::high_resolution_clock::now();
+
 	while (!m_window.isCloseRequested())
 	{
 		m_window.pollEvents();
+
+		//Update camera
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		double deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime).count() / 1000.0;
+
+		if (!m_skipPipeline && m_camera->update(deltaTime))
+		{
+			m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
+		}
+
+		lastTime = currentTime;
 
 		//Check window resize
 		glm::ivec2 currentViewport = m_window.getViewportSize();
@@ -279,12 +295,8 @@ void VulkanKHRRaytracer::drawUI()
 
 			ImGui::Separator();
 
-			if (ImGui::TreeNode("Options"))
-			{
-				m_pipeline->drawOptionsUI();
-
-				ImGui::TreePop();
-			}
+			ImGui::Text("Options:");
+			m_pipeline->drawOptionsUI();
 
 			ImGui::Spacing();
 		}

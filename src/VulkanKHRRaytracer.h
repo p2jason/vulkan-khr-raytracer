@@ -4,6 +4,8 @@
 #include "api/RenderDevice.h"
 #include "api/RaytracingDevice.h"
 
+#include "camera/Camera.h"
+
 #include "scene/SceneLoader.h"
 #include "scene/ScenePresenter.h"
 
@@ -16,6 +18,7 @@ private:
 	int m_startingWidth = 1920;
 	int m_startingHeight = 1080;
 
+	std::shared_ptr<Camera> m_camera = nullptr;
 	int m_renderTargetWidth = 1920;
 	int m_renderTargetHeight = 1080;
 

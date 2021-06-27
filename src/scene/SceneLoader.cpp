@@ -2,7 +2,7 @@
 
 #include <Common.h>
 
-#define STB_IMAGE_IMPLEMENTATION
+//#define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 #include <assimp/scene.h>
@@ -12,6 +12,7 @@
 
 #include <glm/gtx/transform.hpp>
 
+#include <filesystem>
 #include <vector>
 #include <chrono>
 
@@ -204,7 +205,7 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	representation.tlas = std::move(tlas);
 }
 
-bool loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTextureType textureType, int index, std::shared_ptr<uint8_t>& output, int& width, int& height)
+bool loadMaterialTexture(const aiScene* scene, const char* scenePath, const aiMaterial* material, aiTextureType textureType, int index, std::shared_ptr<uint8_t>& output, int& width, int& height)
 {
 	//Get texture path
 	aiString name;
@@ -248,7 +249,25 @@ bool loadMaterialTexture(const aiScene* scene, const aiMaterial* material, aiTex
 	}
 	else
 	{
-		FATAL_ERROR("External textures not supoported yet!");
+		std::filesystem::path path(Resources::resolvePath(name.C_Str()));
+
+		if (path.is_relative())
+		{
+			path = std::filesystem::path(scenePath).replace_filename(path);
+		}
+
+		std::string pathString = path.string();
+
+		int numChannels;
+		stbi_uc* imageMemory = stbi_load(pathString.c_str(), &width, &height, &numChannels, 4);
+
+		if (!imageMemory)
+		{
+			std::cerr << "Unable to load texture '" << name.C_Str() << "' from material '" << material->GetName().C_Str() << "'" << std::endl;
+			return false;
+		}
+
+		output = std::shared_ptr<uint8_t>((uint8_t*)imageMemory, stbi_image_free);
 	}
 
 	return true;
@@ -360,7 +379,7 @@ std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkComm
 	return std::make_pair(texture, sampler);
 }
 
-void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& representation, std::shared_ptr<SceneLoadProgress> progress)
+void loadMaterials(const RaytracingDevice* device, const char* scenePath, const aiScene* scene, Scene& representation, std::shared_ptr<SceneLoadProgress> progress)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
@@ -382,7 +401,7 @@ void loadMaterials(const RaytracingDevice* device, const aiScene* scene, Scene& 
 			Material material;
 
 			//Load albedo texture
-			if (loadMaterialTexture(scene, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height))
+			if (loadMaterialTexture(scene, scenePath, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height))
 			{
 				representation.isMaterialOpaque.push_back(!checkHasAlpha(albedoData, width, height));
 
@@ -588,6 +607,8 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	{
 		std::cout << "Assimp Error:\n" << importer.GetErrorString() << std::endl;
 
+		progress->finish();
+
 		return nullptr;
 	}
 
@@ -599,7 +620,7 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	std::vector<uint32_t> materialIndices;
 
 	//Load materials
-	loadMaterials(device, scene, *representation, progress);
+	loadMaterials(device, scenePath, scene, *representation, progress);
 
 	progress->nextStage("Loading scene graph");
 

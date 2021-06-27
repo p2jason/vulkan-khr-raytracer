@@ -46,14 +46,14 @@ void main() {
 	//Test shadows
 	isShadowed = true;
 	
-	vec3 normal = normal0 * w + normal1 * attribs.x + normal2 * attribs.y;
+	vec3 normal = normalize(normal0 * w + normal1 * attribs.x + normal2 * attribs.y);
 	
-    vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * 0.001;
+	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * NORMAL_EPSILON;
 	const vec3 direction = normalize(vec3(-0.5, 1, 0.2));
 	
 	uint rayFlags = gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT;
-	float tMin = 0.01;
-	float tMax = 10000.0;
+	float tMin = NORMAL_EPSILON;
+	float tMax = 1000.0;
 	
 	traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 1, origin, tMin, direction, tMax, 1);
 	
