@@ -159,7 +159,7 @@ void SamplerZooPipeline::drawOptionsUI()
 	ImGui::SetNextItemWidth(std::max(std::min(200.0f, ImGui::GetContentRegionAvail().x), 100.0f));
 	if (ImGui::Combo("Sampler", &m_samplerIndex, s_samplerNames, sizeof(s_samplerNames) / sizeof(s_samplerNames[0])))
 	{
-		reloadSelf();
+		markReload();
 	}
 
 	ImGui::SetNextItemWidth(150);

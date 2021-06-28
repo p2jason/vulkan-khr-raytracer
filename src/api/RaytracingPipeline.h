@@ -24,7 +24,11 @@ public:
 
 	int maxRecursionDepth = 1;
 
+	std::unordered_map<std::string, std::filesystem::file_time_type> monitoredResources;
+
 	bool failedToLoad = false;
+private:
+	void addResource(std::string resourcePath);
 public:
 	int addRaygenShaderFromPath(const RenderDevice* device, const char* raygenPath, std::vector<std::string> definitions = {});
 	int addMissShaderFromPath(const RenderDevice* device, const char* missPath, std::vector<std::string> definitions = {});
@@ -41,15 +45,15 @@ protected:
 	VkPipelineCache m_cache;
 	std::shared_ptr<Scene> m_scene = nullptr;
 
-	std::vector<std::pair<std::string, std::filesystem::file_time_type>> m_monitoredResources;
-	
+	std::unordered_map<std::string, std::filesystem::file_time_type> m_monitoredResources;
+
 	bool m_reloadPipeline = false;
 
 	const RaytracingDevice* m_device = nullptr;
 protected:
 	virtual void notifyCameraChange() {}
 
-	void reloadSelf() { m_reloadPipeline = true; }
+	void markReload() { m_reloadPipeline = true; }
 public:
 	virtual bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<void> reloadOptions = nullptr) = 0;
 	virtual void destroy() = 0;
@@ -67,6 +71,8 @@ public:
 	virtual void drawOptionsUI() {}
 
 	virtual std::shared_ptr<void> getReloadOptions() const { return nullptr; }
+
+	bool isOutOfDate() const;
 
 	inline glm::vec3 getCameraPosition() const { return m_cameraPosition; }
 	inline glm::quat getCameraRotation() const { return m_cameraRotation; }

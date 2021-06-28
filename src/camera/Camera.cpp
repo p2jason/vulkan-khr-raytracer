@@ -1,5 +1,7 @@
 #include "Camera.h"
 
+#include <imgui.h>
+
 bool Camera::update(double delta)
 {
 	glm::vec3 currentPosition = m_position;
@@ -13,6 +15,15 @@ bool Camera::update(double delta)
 			m_isActive = !m_isActive;
 
 			m_window->showCursor(!m_isActive);
+		}
+
+		if (m_isActive)
+		{
+			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+		}
+		else
+		{
+			ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
 		}
 
 		m_escapePressed = true;

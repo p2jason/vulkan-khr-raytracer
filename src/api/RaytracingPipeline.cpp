@@ -24,6 +24,8 @@ int RTPipelineInfo::addRaygenShaderFromPath(const RenderDevice* device, const ch
 
 	raygenModules.push_back(module);
 
+	addResource(raygenPath);
+
 	return (int)raygenModules.size() - 1;
 }
 
@@ -46,6 +48,8 @@ int RTPipelineInfo::addMissShaderFromPath(const RenderDevice* device, const char
 	}
 
 	missModules.push_back(module);
+
+	addResource(missPath);
 
 	return (int)missModules.size() - 1;
 }
@@ -72,6 +76,8 @@ int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* 
 			return -1;
 		}
 
+		addResource(path);
+
 		const std::vector<std::string>& definitions = i == 0 ? closestHitDefs : (i == 1 ? anyHitDefs : intersectionDefs);
 		VkShaderStageFlagBits stage = i == 0 ? VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR : (i == 1 ? VK_SHADER_STAGE_ANY_HIT_BIT_KHR : VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
 
@@ -91,6 +97,33 @@ int RTPipelineInfo::addHitGroupFromPath(const RenderDevice* device, const char* 
 	return (int)hitGroupModules.size() - 1;
 }
 
+void RTPipelineInfo::addResource(std::string resourcePath)
+{
+	std::filesystem::path path(Resources::resolvePath(resourcePath.c_str()));
+
+	if (std::filesystem::exists(path))
+	{
+		monitoredResources[resourcePath] = std::filesystem::last_write_time(path);
+	}
+}
+
+bool RaytracingPipeline::isOutOfDate() const
+{
+	for (auto it = m_monitoredResources.begin(); it != m_monitoredResources.end(); ++it)
+	{
+		std::string fullPath = Resources::resolvePath(it->first.c_str());
+
+		std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(std::filesystem::path(fullPath));
+
+		if (lastWriteTime > it->second)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
@@ -105,6 +138,8 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 	{
 		return false;
 	}
+
+	m_monitoredResources = std::move(pipelineInfo.monitoredResources);
 	
 	//Create pipeline layout
 	pipelineInfo.descSetLayouts.insert(pipelineInfo.descSetLayouts.begin(), scene->descriptorSetLayout);

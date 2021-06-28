@@ -39,6 +39,7 @@ private:
 
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
 
+	bool m_autoReloadScene = true;
 	bool m_reloadScene = false;
 	std::shared_ptr<Scene> m_scene = nullptr;
 

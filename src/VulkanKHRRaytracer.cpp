@@ -147,8 +147,8 @@ void VulkanKHRRaytracer::loadSceneDeferred()
 	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
 
-	m_camera->setPosition(glm::vec3(0, 4, 0));
-	m_camera->setRotation(glm::identity<glm::quat>());
+	m_camera->setPosition(m_scene->cameraPosition);
+	m_camera->setRotation(m_scene->cameraRotation);
 	m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
 
 	m_sceneProgessTracker = nullptr;
@@ -190,7 +190,9 @@ void VulkanKHRRaytracer::mainLoop()
 		drawUI();
 
 		//Check reloaded pipeline
-		if (m_pipeline->shouldReload())
+		bool checkOutdated = !m_skipPipeline && m_autoReloadScene && m_pipeline->isOutOfDate();
+
+		if (m_pipeline->shouldReload() || checkOutdated)
 		{
 			m_reloadOptions = m_pipeline->getReloadOptions();
 
@@ -287,6 +289,8 @@ void VulkanKHRRaytracer::drawUI()
 				m_reloadOptions = nullptr;
 				m_changedPipeline = true;
 			}
+
+			ImGui::Checkbox("Auto reload pipeline", &m_autoReloadScene);
 
 			ImGui::Separator();
 

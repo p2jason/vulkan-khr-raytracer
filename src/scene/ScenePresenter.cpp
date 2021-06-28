@@ -362,8 +362,6 @@ void ScenePresenter::initImGui(const Window& window)
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
-	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-
 	ImGui::StyleColorsDark();
 
 	if (!ImGui_ImplVulkan_LoadFunctions(&imguiLoadVulkanFunc, (void*)m_device))

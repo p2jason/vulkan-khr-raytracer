@@ -664,7 +664,7 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	else
 	{
 		representation->cameraPosition = glm::vec3(0, 0, 0);
-		representation->cameraRotation = glm::quat();
+		representation->cameraRotation = glm::identity<glm::quat>();
 	}
 
 	importer.FreeScene();
