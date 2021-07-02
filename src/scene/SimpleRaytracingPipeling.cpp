@@ -12,16 +12,19 @@ struct CameraData
 	glm::vec3 position;
 };
 
-bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions)
+bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<Camera> camera, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 	
 	//Load pipeline shaders
-	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/rtsimple/simple.rgen");
-	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/rtsimple/simple.rmiss");
-	pipelineInfo.addHitGroupFromPath(renderDevice, "asset://shaders/rtsimple/simple.rchit", "asset://shaders/rtsimple/simple.rahit", nullptr);
+	std::vector<std::string> definitions = { camera->getCameraDefintions() };
 
-	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/rtsimple/shadow.rmiss");
+	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/rtsimple/simple.rgen", definitions);
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/rtsimple/simple.rmiss", definitions);
+	pipelineInfo.addHitGroupFromPath(renderDevice, "asset://shaders/rtsimple/simple.rchit", "asset://shaders/rtsimple/simple.rahit", nullptr,
+												   definitions, definitions);
+
+	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/rtsimple/shadow.rmiss", definitions);
 
 	if (pipelineInfo.failedToLoad)
 	{
@@ -67,13 +70,7 @@ bool BasicRaytracingPipeline::create(const RaytracingDevice* device, RTPipelineI
 	VK_CHECK(vkAllocateDescriptorSets(renderDevice->getDevice(), &allocInfo, &m_descriptorSet));
 
 	//Create camera data buffer
-	m_cameraBuffer = renderDevice->createBuffer(sizeof(CameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	vkMapMemory(renderDevice->getDevice(), m_cameraBuffer.memory, 0, sizeof(CameraData), 0, &m_cameraData);
-
-	VkDescriptorBufferInfo bufferInfo = {};
-	bufferInfo.buffer = m_cameraBuffer.buffer;
-	bufferInfo.offset = 0;
-	bufferInfo.range = sizeof(CameraData);
+	VkDescriptorBufferInfo bufferInfo = camera->getDescriptorInfo();
 
 	VkWriteDescriptorSet setWrite = {};
 	setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -133,34 +130,12 @@ void BasicRaytracingPipeline::drawOptionsUI()
 
 }
 
-void BasicRaytracingPipeline::notifyCameraChange()
-{
-	float tanHalfFOV = tan(m_fov / 2.0f);
-	float aspectRatio = (float)m_width / m_height;
-
-	glm::mat3 projectionMatrix(glm::vec3(2.0f, 0.0f, 0.0f),
-							   glm::vec3(0.0f, 2.0f, 0.0f),
-							   glm::vec3(-1.0f, -1.0f, 1.0f));
-	
-	projectionMatrix = glm::mat3(glm::vec3(tanHalfFOV * aspectRatio, 0.0f, 0.0f),
-								 glm::vec3(0.0f, -tanHalfFOV, 0.0f),
-								 glm::vec3(0.0f, 0.0f, 1.0f)) * projectionMatrix;
-
-	projectionMatrix = glm::toMat3(m_cameraRotation) * projectionMatrix;
-	
-	((CameraData*)m_cameraData)->viewMatrix = projectionMatrix;
-	((CameraData*)m_cameraData)->position = m_cameraPosition;
-}
-
 void BasicRaytracingPipeline::clean(const RaytracingDevice* raytracingDevice)
 {
 	VkDevice device = raytracingDevice->getRenderDevice()->getDevice();
 
 	vkDestroyDescriptorPool(device, m_descriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(device, m_descSetLayout, nullptr);
-
-	vkUnmapMemory(device, m_cameraBuffer.memory);
-	raytracingDevice->getRenderDevice()->destroyBuffer(m_cameraBuffer);
 }
 
 void BasicRaytracingPipeline::bind(VkCommandBuffer commandBuffer)

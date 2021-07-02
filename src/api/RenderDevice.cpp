@@ -770,9 +770,11 @@ VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, con
 	
 	std::stringstream ss;
 
+	ss << "#extension GL_GOOGLE_include_directive : require\n";
+
 	for (std::string define : definitions)
 	{
-		ss << "#define " << define << " 1\n";
+		ss << define << "\n";
 	}
 
 	std::string preamble = ss.str();
@@ -780,7 +782,7 @@ VkShaderModule RenderDevice::compileShader(VkShaderStageFlagBits shaderType, con
 	//Compile shader
 	EShMessages messages = (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules);
 
-	const int defaultVersion = 400;
+	const int defaultVersion = 460;
 
 	std::unique_ptr<TShader> shader = std::make_unique<TShader>(language);
 	shader->setStringsWithLengths(&shaderSource, &shaderLength, 1);

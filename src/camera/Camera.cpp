@@ -39,7 +39,7 @@ bool Camera::update(double delta)
 	}
 
 	//Update position
-	float moveAmount = delta * m_speed;
+	float moveAmount = (float)delta * m_speed;
 
 	if (Window::windowInput.isKeyPressed(GLFW_KEY_W))
 	{
@@ -80,5 +80,12 @@ bool Camera::update(double delta)
 
 	m_window->setMousePos(m_window->getViewportSize() / 2);
 
-	return currentPosition != m_position || currentRotation != m_rotation;
+	if (currentPosition != m_position || currentRotation != m_rotation)
+	{
+		onUpdated(m_position, m_rotation, m_renderTargetWidth, m_renderTargetHeigth);
+
+		return true;
+	}
+
+	return false;
 }

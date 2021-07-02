@@ -124,7 +124,7 @@ bool RaytracingPipeline::isOutOfDate() const
 	return false;
 }
 
-bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<void> reloadOptions)
+bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = raytracingDevice->getRenderDevice();
 	VkDevice device = renderDevice->getDevice();
@@ -134,7 +134,7 @@ bool NativeRaytracingPipeline::init(const RaytracingDevice* raytracingDevice, Vk
 
 	//Get pipeline info
 	RTPipelineInfo pipelineInfo;
-	if (!create(raytracingDevice, pipelineInfo, reloadOptions))
+	if (!create(raytracingDevice, pipelineInfo, camera, reloadOptions))
 	{
 		return false;
 	}

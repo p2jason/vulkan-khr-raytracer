@@ -12,6 +12,8 @@
 
 #include "api/Window.h"
 
+#include "camera/PerspectiveCamera.h"
+
 #include "scene/pipelines/SamplerZooPipeline.h"
 #include "scene/SimpleRaytracingPipeling.h"
 
@@ -39,10 +41,10 @@ PipelineDefFunc s_pipelineFunctions[] = {
 };
 
 VulkanKHRRaytracer::VulkanKHRRaytracer() :
-	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(0),
+	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1),
 	m_showMessageDialog(false), m_reloadOptions(nullptr), m_skipPipeline(true)
 {
-	m_camera = std::make_shared<Camera>(&m_window);
+	m_camera = std::make_shared<PerspectiveCamera>(&m_window);
 }
 
 void VulkanKHRRaytracer::start()
@@ -84,6 +86,10 @@ void VulkanKHRRaytracer::start()
 
 	VK_CHECK(vkCreatePipelineCache(m_device.getDevice(), &pipelineCacheCI, nullptr, &m_pipelineCache));
 
+	//Create camera
+	m_camera->init(&m_device);
+	m_camera->setRenderTargetSize(m_renderTargetWidth, m_renderTargetHeight);
+
 	//Create pipeline
 	m_pipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
 
@@ -97,7 +103,7 @@ void VulkanKHRRaytracer::start()
 void VulkanKHRRaytracer::handlePipelineChange()
 {
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
-	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, m_scene, m_reloadOptions))
+	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, m_scene, m_camera, m_reloadOptions))
 	{
 		m_errorMessage = "Failed to load new raytracing pipeline";
 		m_showMessageDialog = true;
@@ -112,7 +118,6 @@ void VulkanKHRRaytracer::handlePipelineChange()
 
 	m_pipeline = newPipeline;
 	m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
-	m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
 }
 
 void VulkanKHRRaytracer::loadSceneDeferred()
@@ -130,7 +135,7 @@ void VulkanKHRRaytracer::loadSceneDeferred()
 	}
 
 	RaytracingPipeline* newPipeline = s_pipelineFunctions[m_selectedPipelineIndex]();
-	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, newScene))
+	if (!newPipeline->init(&m_raytracingDevice, m_pipelineCache, newScene, m_camera, m_reloadOptions))
 	{
 		m_errorMessage = "Failed to reload raytracing pipeline";
 		m_showMessageDialog = true;
@@ -149,7 +154,6 @@ void VulkanKHRRaytracer::loadSceneDeferred()
 
 	m_camera->setPosition(m_scene->cameraPosition);
 	m_camera->setRotation(m_scene->cameraRotation);
-	m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
 
 	m_sceneProgessTracker = nullptr;
 	m_skipPipeline = false;
@@ -171,7 +175,7 @@ void VulkanKHRRaytracer::mainLoop()
 
 		if (!m_skipPipeline && m_camera->update(deltaTime))
 		{
-			m_pipeline->setCameraData(m_camera->getPosition(), m_camera->getRotation());
+			m_pipeline->notifyCameraChange();
 		}
 
 		lastTime = currentTime;
@@ -316,6 +320,8 @@ void VulkanKHRRaytracer::drawUI()
 				m_renderTargetWidth = dimensions[0];
 				m_renderTargetHeight = dimensions[1];
 
+				m_camera->setRenderTargetSize(m_renderTargetWidth, m_renderTargetHeight);
+
 				m_pipeline->destroyRenderTarget();
 				m_pipeline->createRenderTarget(m_renderTargetWidth, m_renderTargetHeight);
 			}
@@ -435,6 +441,8 @@ void VulkanKHRRaytracer::stop()
 
 		delete m_pipeline;
 	}
+
+	m_camera->destroy();
 
 	m_scene = nullptr;
 

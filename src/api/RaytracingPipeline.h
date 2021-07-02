@@ -3,6 +3,7 @@
 #include "api/RaytracingDevice.h"
 
 #include "scene/SceneLoader.h"
+#include "camera/Camera.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -39,9 +40,6 @@ public:
 class RaytracingPipeline
 {
 protected:
-	glm::vec3 m_cameraPosition;
-	glm::quat m_cameraRotation;
-
 	VkPipelineCache m_cache;
 	std::shared_ptr<Scene> m_scene = nullptr;
 
@@ -51,11 +49,9 @@ protected:
 
 	const RaytracingDevice* m_device = nullptr;
 protected:
-	virtual void notifyCameraChange() {}
-
 	void markReload() { m_reloadPipeline = true; }
 public:
-	virtual bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<void> reloadOptions = nullptr) = 0;
+	virtual bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera, std::shared_ptr<void> reloadOptions = nullptr) = 0;
 	virtual void destroy() = 0;
 
 	virtual void raytrace(VkCommandBuffer buffer) = 0;
@@ -70,23 +66,11 @@ public:
 	virtual const char* getDescription() const { return "No description"; }
 	virtual void drawOptionsUI() {}
 
+	virtual void notifyCameraChange() {}
+
 	virtual std::shared_ptr<void> getReloadOptions() const { return nullptr; }
 
 	bool isOutOfDate() const;
-
-	inline glm::vec3 getCameraPosition() const { return m_cameraPosition; }
-	inline glm::quat getCameraRotation() const { return m_cameraRotation; }
-
-	inline void setCameraPosition(glm::vec3 position) { m_cameraPosition = position; notifyCameraChange(); }
-	inline void setCameraRotation(glm::quat rotation) { m_cameraRotation = rotation; notifyCameraChange(); }
-
-	inline void setCameraData(glm::vec3 position, glm::quat rotation)
-	{
-		m_cameraPosition = position;
-		m_cameraRotation = rotation;
-
-		notifyCameraChange();
-	}
 
 	inline void notifyReloaded() { m_reloadPipeline = false; }
 	inline bool shouldReload() const { return m_reloadPipeline; }
@@ -108,12 +92,12 @@ protected:
 
 	Buffer m_sbtBuffer;
 protected:
-	virtual bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions) = 0;
+	virtual bool create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<Camera> camera, std::shared_ptr<void> reloadOptions) = 0;
 	virtual void clean(const RaytracingDevice* device) {}
 
 	virtual void bind(VkCommandBuffer commandBuffer) {}
 public:
-	bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<void> reloadOptions = nullptr) override;
+	bool init(const RaytracingDevice* device, VkPipelineCache cache, std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera, std::shared_ptr<void> reloadOptions = nullptr) override;
 	void destroy() override;
 
 	void raytrace(VkCommandBuffer buffer) override;

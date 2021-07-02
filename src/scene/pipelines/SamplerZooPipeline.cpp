@@ -20,11 +20,11 @@ const char* s_samplerNames[] = {
 };
 
 const char* s_samplerDefs[] = {
-	"RNG_USE_WHITE",
-	"RNG_USE_HALTON"
+	"#define RNG_USE_WHITE 1",
+	"#define RNG_USE_HALTON 1"
 };
 
-bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<void> reloadOptions)
+bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& pipelineInfo, std::shared_ptr<Camera> camera, std::shared_ptr<void> reloadOptions)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
 
@@ -38,7 +38,7 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 	}
 
 	//Load pipeline shaders
-	std::vector<std::string> definitions = { s_samplerDefs[m_samplerIndex] };
+	std::vector<std::string> definitions = { s_samplerDefs[m_samplerIndex], camera->getCameraDefintions() };
 
 	pipelineInfo.addRaygenShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rgen", definitions);
 	pipelineInfo.addMissShaderFromPath(renderDevice, "asset://shaders/sampler_zoo/sampler_zoo.rmiss", definitions);
@@ -93,13 +93,7 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 	VK_CHECK(vkAllocateDescriptorSets(renderDevice->getDevice(), &allocInfo, &m_descriptorSet));
 
 	//Create camera data buffer
-	m_cameraBuffer = renderDevice->createBuffer(sizeof(CameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	vkMapMemory(renderDevice->getDevice(), m_cameraBuffer.memory, 0, sizeof(CameraData), 0, &m_cameraData);
-
-	VkDescriptorBufferInfo bufferInfo = {};
-	bufferInfo.buffer = m_cameraBuffer.buffer;
-	bufferInfo.offset = 0;
-	bufferInfo.range = sizeof(CameraData);
+	VkDescriptorBufferInfo bufferInfo = camera->getDescriptorInfo();
 
 	VkWriteDescriptorSet setWrite = {};
 	setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -169,34 +163,12 @@ void SamplerZooPipeline::drawOptionsUI()
 	}
 }
 
-void SamplerZooPipeline::notifyCameraChange()
-{
-	float tanHalfFOV = tan(m_fov / 2.0f);
-	float aspectRatio = (float)m_width / m_height;
-
-	glm::mat3 projectionMatrix(glm::vec3(2.0f, 0.0f, 0.0f),
-							   glm::vec3(0.0f, 2.0f, 0.0f),
-							   glm::vec3(-1.0f, -1.0f, 1.0f));
-
-	projectionMatrix = glm::mat3(glm::vec3(tanHalfFOV * aspectRatio, 0.0f, 0.0f),
-								 glm::vec3(0.0f, -tanHalfFOV, 0.0f),
-								 glm::vec3(0.0f, 0.0f, 1.0f)) * projectionMatrix;
-
-	projectionMatrix = glm::toMat3(m_cameraRotation) * projectionMatrix;
-
-	((CameraData*)m_cameraData)->viewMatrix = projectionMatrix;
-	((CameraData*)m_cameraData)->position = m_cameraPosition;
-}
-
 void SamplerZooPipeline::clean(const RaytracingDevice* raytracingDevice)
 {
 	VkDevice device = raytracingDevice->getRenderDevice()->getDevice();
 
 	vkDestroyDescriptorPool(device, m_descriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(device, m_descSetLayout, nullptr);
-
-	vkUnmapMemory(device, m_cameraBuffer.memory);
-	raytracingDevice->getRenderDevice()->destroyBuffer(m_cameraBuffer);
 }
 
 void SamplerZooPipeline::bind(VkCommandBuffer commandBuffer)

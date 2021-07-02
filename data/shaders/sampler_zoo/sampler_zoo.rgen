@@ -1,6 +1,4 @@
-#version 460
 #extension GL_EXT_ray_tracing : require
-#extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_scalar_block_layout : enable
 
 #include "common/common.glsl"
@@ -11,15 +9,14 @@ layout(location = 0) rayPayloadEXT SamplerZooHitPayload payload;
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
 layout(set = 1, binding = 0, rgba32f) uniform image2D image;
-layout(set = 1, binding = 1, scalar) uniform CameraData {
-	mat3 cameraMatrix;
-	vec3 cameraPosition;
-};
 
 void main() {
-	vec2 pixelUV = (vec2(gl_LaunchIDEXT.xy) + vec2(0.5)) / vec2(gl_LaunchSizeEXT.xy);
+	vec3 rayPos;
+	vec3 rayDir;
+	
+	calcCameraRay(vec2(gl_LaunchIDEXT.xy), vec2(gl_LaunchSizeEXT.xy), rayPos, rayDir);
 
-	vec3 direction = normalize(cameraMatrix * vec3(pixelUV, 1.0));
+	vec2 pixelUV = (vec2(gl_LaunchIDEXT.xy) + vec2(0.5)) / vec2(gl_LaunchSizeEXT.xy);
 
 #ifdef RNG_USE_HALTON
 	halton_rng_init(payload.rng, 5, 7, pixelUV, 0);
@@ -31,7 +28,7 @@ void main() {
 	float tMin = 0.01;
 	float tMax = 10000.0;
 
-	traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 0, cameraPosition, tMin, direction, tMax, 0);
+	traceRayEXT(topLevelAS, rayFlags, 0xFF, 0, 0, 0, rayPos, tMin, rayDir, tMax, 0);
 
 	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payload.hitValue, 1.0));
 }
