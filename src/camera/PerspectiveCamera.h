@@ -2,6 +2,8 @@
 
 #include "api/RaytracingDevice.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 
 class PerspectiveCamera : public Camera

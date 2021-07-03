@@ -5,6 +5,9 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
+#undef min
+#undef max
+
 #include <glm/glm.hpp>
 
 #include <vector>

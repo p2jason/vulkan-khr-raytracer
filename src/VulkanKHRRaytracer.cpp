@@ -10,15 +10,15 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <backends/imgui_impl_glfw.h>
 
+#undef max
+#undef min
+
 #include "api/Window.h"
 
 #include "camera/PerspectiveCamera.h"
 
 #include "scene/pipelines/SamplerZooPipeline.h"
-#include "scene/SimpleRaytracingPipeling.h"
-
-#undef max
-#undef min
+#include "scene/pipelines/BasicRaytracingPipeline.h"
 
 typedef RaytracingPipeline* (*PipelineDefFunc)();
 

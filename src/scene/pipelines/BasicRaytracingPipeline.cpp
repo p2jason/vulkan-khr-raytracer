@@ -1,4 +1,4 @@
-#include "SimpleRaytracingPipeling.h"
+#include "BasicRaytracingPipeline.h"
 
 #include "Common.h"
 
