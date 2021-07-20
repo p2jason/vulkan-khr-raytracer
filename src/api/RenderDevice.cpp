@@ -169,22 +169,6 @@ public:
 	}
 };
 
-uint32_t findMemoryType(uint32_t typeFilter, const VkPhysicalDeviceMemoryProperties& memProperties, VkMemoryPropertyFlags properties)
-{
-	for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
-	{
-		if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-		{
-			return i;
-		}
-	}
-
-	std::cout << "Cannot find appropriate memory heap" << std::endl;
-	std::exit(-1);
-
-	return (uint32_t)-1;
-}
-
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -220,6 +204,9 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 		if (minSeveritry <= 3)
 		{
 			std::cout << "Vulkan Error: " << pCallbackData->pMessage << std::endl;
+#ifndef NDEBUG
+			__debugbreak();
+#endif
 		}
 		break;
 	}
@@ -541,6 +528,19 @@ void RenderDevice::submit(const std::vector<VkCommandBuffer>& commandBuffers, co
 	VK_CHECK(vkQueueSubmit(m_queue, 1, &submitInfo, signalFence));
 }
 
+uint32_t RenderDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
+{
+	for (uint32_t i = 0; i < m_memProperties.memoryTypeCount; ++i)
+	{
+		if (typeFilter & (1 << i) && (m_memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		{
+			return i;
+		}
+	}
+
+	return (uint32_t)-1;
+}
+
 Buffer RenderDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const
 {
 	VkBufferCreateInfo createInfo = {};
@@ -560,7 +560,12 @@ Buffer RenderDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, V
 	VkMemoryAllocateInfo allocInfo = {};
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.allocationSize = requirements.size;
-	allocInfo.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, m_memProperties, properties);
+	allocInfo.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, properties);
+
+	if (allocInfo.memoryTypeIndex == (uint32_t)-1)
+	{
+		FATAL_ERROR("Could not find appropriate memory type for buffer");
+	}
 
 	VkDeviceMemory memory;
 	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &memory));
@@ -615,7 +620,12 @@ Image RenderDevice::createImage2D(int width, int height, VkFormat format, int mi
 	VkMemoryAllocateInfo allocInfo = {};
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.allocationSize = requirements.size;
-	allocInfo.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, m_memProperties, properties);
+	allocInfo.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, properties);
+
+	if (allocInfo.memoryTypeIndex == (uint32_t)-1)
+	{
+		FATAL_ERROR("Could not find appropriate memory type for image");
+	}
 
 	VkDeviceMemory memory;
 	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &memory));

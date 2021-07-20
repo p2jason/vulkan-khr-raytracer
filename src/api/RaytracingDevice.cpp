@@ -80,10 +80,10 @@ RaytracingDeviceFeatures* RaytracingDevice::init(RenderDevice* renderDevice)
 	return features;
 }
 
-std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(Buffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, Buffer indexBuffer, unsigned int indexCount, VkDeviceOrHostAddressConstKHR transformData, VkGeometryFlagsKHR flags) const
+std::shared_ptr<const BLASGeometryInfo> RaytracingDevice::compileGeometry(VkBuffer vertexBuffer, unsigned int vertexSize, unsigned int maxVertex, VkBuffer indexBuffer, unsigned int indexCount, VkDeviceOrHostAddressConstKHR transformData, VkGeometryFlagsKHR flags) const
 {
-	VkDeviceAddress vertexAddress = m_renderDevice->getBufferAddress(vertexBuffer.buffer);
-	VkDeviceAddress indexAddress = m_renderDevice->getBufferAddress(indexBuffer.buffer);
+	VkDeviceAddress vertexAddress = m_renderDevice->getBufferAddress(vertexBuffer);
+	VkDeviceAddress indexAddress = m_renderDevice->getBufferAddress(indexBuffer);
 
 	VkAccelerationStructureGeometryKHR geometry = {};
 	geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;

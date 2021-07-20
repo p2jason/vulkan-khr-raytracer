@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <vector>
 #include <chrono>
+#include <array>
 
 #define DESC_SET_WRITE_BUFFER(e, desc, bind, arr, type)	\
 if (arr.size() > 0) {									\
@@ -92,11 +93,153 @@ void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerat
 	}
 }
 
+template<int N>
+struct BufferAllocDetails
+{
+	VkBuffer buffer;
+
+	//The offset of the buffer within the allocation it takes its memory from
+	VkDeviceSize pageOffset;
+
+	//The actual size of the buffer (as returned by `vkGetBufferMemoryRequirements`)
+	VkDeviceSize actualSize;
+
+	//The total size of the ranges
+	VkDeviceSize totalRangeSize;
+
+	//The offset of each range WITHIN the buffer and its size
+	std::array<std::pair<VkDeviceSize, VkDeviceSize>, N> ranges;
+};
+
+typedef BufferAllocDetails<3> VertexBufferAllocDetails;
+typedef BufferAllocDetails<1> IndexBufferAllocDetails;
+
+template<int N>
+BufferAllocDetails<N> createBufferAllocDetails(VkDevice deviceHandle, VkDeviceSize sizes[N], VkDeviceSize rangeAlignment, VkBufferUsageFlags bufferUsage, VkDeviceSize& totalSceneSize, uint32_t& mutualMemoryTypeBits)
+{
+	BufferAllocDetails<N> allocDetails;
+
+	for (int i = 0; i < N; ++i)
+	{
+		VkDeviceSize offset = i > 0 ? (offset = allocDetails.ranges[i - 1].first + allocDetails.ranges[i - 1].second) : 0;
+
+		allocDetails.ranges[i] = std::make_pair(UINT32_ALIGN(offset, rangeAlignment), sizes[i]);
+	}
+
+	allocDetails.totalRangeSize = allocDetails.ranges.back().first + allocDetails.ranges.back().second;
+
+	VkBufferCreateInfo bufferCI = {};
+	bufferCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCI.size = allocDetails.totalRangeSize;
+	bufferCI.usage = bufferUsage;
+	bufferCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCI.queueFamilyIndexCount = 0;
+	bufferCI.pQueueFamilyIndices = nullptr;
+
+	VK_CHECK(vkCreateBuffer(deviceHandle, &bufferCI, nullptr, &allocDetails.buffer));
+
+	//Compute offset and alignment, and update memory type bits
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(deviceHandle, allocDetails.buffer, &memRequirements);
+
+	allocDetails.pageOffset = UINT32_ALIGN(totalSceneSize, memRequirements.alignment);
+	allocDetails.actualSize = memRequirements.size;
+
+	totalSceneSize = allocDetails.pageOffset + allocDetails.actualSize;
+
+	//By ANDing the memory type bits of all the buffers together, we are
+	//keeping only the memory types that are supported by all buffers
+	mutualMemoryTypeBits &= memRequirements.memoryTypeBits;
+
+	return allocDetails;
+}
+
 void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene& representation, std::vector<uint32_t>& materialIndices)
 {
+	/*
+	 ------------------------------
+			Note on alignemt
+	 ------------------------------
+
+	 There are two alignemts that are of interest: 
+		1. VkPhysicalDeviceLimits::minStorageBufferOffsetAlignment
+		2. VkMemoryRequirements::alignment
+
+	 When allocating a buffer, its offset within the allocation it takes its memory from must be a multiple of
+	 `VkMemoryRequirements::alignment`.
+
+	 When binding a range of a buffer to a descriptor of type VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, its offset
+	 within the buffer must be a multiple of `VkPhysicalDeviceLimits::minStorageBufferOffsetAlignment`.
+	 This means that range offsets do not also need to be aligned to `VkMemoryRequirements::alignment`.
+	*/
+
 	//Parse meshes
 	std::vector<BottomLevelAS> meshBLASList;
-	std::vector<Buffer> stagingBuffers;
+
+	VkDevice deviceHandle = device->getRenderDevice()->getDevice();
+
+	const VkBufferUsageFlags vertexBufferUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+	const VkBufferUsageFlags indexBufferUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+	const VkBufferUsageFlags stagingBufferUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+	const VkMemoryPropertyFlags vertexMemoryProperty = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	const VkMemoryPropertyFlags indexMemoryProperty = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	const VkMemoryPropertyFlags stagingMemoryProperty = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+	//Calculate total allocation size
+	VkDeviceSize totalSceneSize = 0;
+	VkDeviceSize rangeAlingment = device->getPhysicalDeviceLimits().minStorageBufferOffsetAlignment;
+
+	std::vector<VertexBufferAllocDetails> vertexBufferRanges;
+	std::vector<IndexBufferAllocDetails> indexBufferRanges;
+
+	uint32_t mutualMemoryTypeBits = 0xFFFFFFFF;
+
+	//Calculate details of vertex buffers
+	for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+	{
+		const aiMesh* mesh = scene->mMeshes[i];
+
+		VkDeviceSize sizes[3] = { mesh->mNumVertices * sizeof(glm::vec3),
+								  mesh->mNumVertices * sizeof(glm::vec2),
+								  mesh->mNumVertices * sizeof(glm::vec3) };
+
+		vertexBufferRanges.push_back(createBufferAllocDetails<3>(deviceHandle, sizes, rangeAlingment, vertexBufferUsage, totalSceneSize, mutualMemoryTypeBits));
+	}
+
+	//Calculate details of index buffers
+	for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+	{
+		const aiMesh* mesh = scene->mMeshes[i];
+
+		VkDeviceSize sizes[1] = { mesh->mNumFaces * (3 * sizeof(uint32_t)) };
+
+		indexBufferRanges.push_back(createBufferAllocDetails<1>(deviceHandle, sizes, rangeAlingment, vertexBufferUsage, totalSceneSize, mutualMemoryTypeBits));
+	}
+
+	if (!mutualMemoryTypeBits)
+	{
+		FATAL_ERROR("Could not find memory type that supports all scene buffers");
+	}
+
+	//Allocate scene memory
+	uint32_t sceneMemTypeIndex = device->getRenderDevice()->findMemoryType(mutualMemoryTypeBits, vertexMemoryProperty);
+
+	if (sceneMemTypeIndex == (uint32_t)-1)
+	{
+		FATAL_ERROR("Could not find appropriate memory type for scene");
+	}
+
+	VkMemoryAllocateInfo memAllocInfo = {};
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.allocationSize = totalSceneSize;
+	memAllocInfo.memoryTypeIndex = sceneMemTypeIndex;
+
+	VkDeviceMemory sceneMemory = VK_NULL_HANDLE;
+	VK_CHECK(vkAllocateMemory(deviceHandle, &memAllocInfo, nullptr, &sceneMemory));
+	
+	//Allocate staging memory
+	Buffer stagingBuffer = device->getRenderDevice()->createBuffer(totalSceneSize, stagingBufferUsage, stagingMemoryProperty);
 
 	device->getRenderDevice()->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
 	{
@@ -104,25 +247,20 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 		{
 			const aiMesh* mesh = scene->mMeshes[i];
 
-			VkDeviceSize alignment = device->getPhysicalDeviceLimits().minStorageBufferOffsetAlignment;
+			const VertexBufferAllocDetails& vertexBufferDetails = vertexBufferRanges[i];
+			const IndexBufferAllocDetails& indexBufferDetails = indexBufferRanges[i];
 
-			std::pair<VkDeviceSize, VkDeviceSize> positionRange = std::make_pair(0, mesh->mNumVertices * sizeof(glm::vec3));
-			std::pair<VkDeviceSize, VkDeviceSize> texCoordRange = std::make_pair(UINT32_ALIGN(positionRange.first + positionRange.second, alignment), mesh->mNumVertices * sizeof(glm::vec2));
-			std::pair<VkDeviceSize, VkDeviceSize> normalRange = std::make_pair(UINT32_ALIGN(texCoordRange.first + texCoordRange.second, alignment), mesh->mNumVertices * sizeof(glm::vec3));
+			//Bind buffer memory
+			vkBindBufferMemory(deviceHandle, vertexBufferDetails.buffer, sceneMemory, vertexBufferDetails.pageOffset);
+			vkBindBufferMemory(deviceHandle, indexBufferDetails.buffer, sceneMemory, indexBufferDetails.pageOffset);
 
-			VkDeviceSize vertexBufferSize = normalRange.first + normalRange.second;
-			VkDeviceSize indexBufferSize = mesh->mNumFaces * (3 * sizeof(uint32_t));
-			VkDeviceSize stagingBufferSize = vertexBufferSize + indexBufferSize;
-
-			//Create staging buffers
-			Buffer stagingBuffer = device->getRenderDevice()->createBuffer(stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
+			//Write vertex data
 			void* memory = nullptr;
-			VK_CHECK(vkMapMemory(device->getRenderDevice()->getDevice(), stagingBuffer.memory, 0, stagingBufferSize, 0, &memory));
+			VK_CHECK(vkMapMemory(deviceHandle, stagingBuffer.memory, vertexBufferDetails.pageOffset, vertexBufferDetails.totalRangeSize, 0, &memory));
 
-			glm::vec3* positionMemory = (glm::vec3*)((uint8_t*)memory + positionRange.first);
-			glm::vec2* texCoordMemory = (glm::vec2*)((uint8_t*)memory + texCoordRange.first);
-			glm::vec3* normalMemory = (glm::vec3*)((uint8_t*)memory + normalRange.first);
+			glm::vec3* positionMemory = (glm::vec3*)((uint8_t*)memory + vertexBufferDetails.ranges[0].first);
+			glm::vec2* texCoordMemory = (glm::vec2*)((uint8_t*)memory + vertexBufferDetails.ranges[1].first);
+			glm::vec3* normalMemory = (glm::vec3*)((uint8_t*)memory + vertexBufferDetails.ranges[2].first);
 
 			for (unsigned int i = 0; i < mesh->mNumVertices; ++i)
 			{
@@ -136,7 +274,12 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 				texCoordMemory[i] = { texCoords.x, texCoords.y };
 			}
 
-			unsigned int* indexMemory = (unsigned int*)((uint8_t*)memory + vertexBufferSize);
+			vkUnmapMemory(deviceHandle, stagingBuffer.memory);
+
+			//Write index data
+			VK_CHECK(vkMapMemory(deviceHandle, stagingBuffer.memory, indexBufferDetails.pageOffset, indexBufferDetails.totalRangeSize, 0, &memory));
+
+			unsigned int* indexMemory = (unsigned int*)((uint8_t*)memory + indexBufferDetails.ranges[0].first);
 			for (unsigned int i = 0; i < mesh->mNumFaces; ++i)
 			{
 				assert(mesh->mFaces[i].mNumIndices == 3);
@@ -146,47 +289,40 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 				indexMemory[3 * i + 2] = mesh->mFaces[i].mIndices[2];
 			}
 
-			vkUnmapMemory(device->getRenderDevice()->getDevice(), stagingBuffer.memory);
+			vkUnmapMemory(deviceHandle, stagingBuffer.memory);
 
 			//Create BLAS for mesh
-			Buffer vertexBuffer = device->getRenderDevice()->createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-																							VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-			Buffer indexBuffer = device->getRenderDevice()->createBuffer(indexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-																						  VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBuffer, sizeof(glm::vec3), mesh->mNumVertices, indexBuffer, mesh->mNumFaces, { 0 }, 0);
+			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBufferDetails.buffer, sizeof(glm::vec3), mesh->mNumVertices, indexBufferDetails.buffer, mesh->mNumFaces, { 0 }, 0);
 
 			BottomLevelAS blas;
 			blas.init(device, geomertryInfo, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
 
 			meshBLASList.push_back(blas);
 
-			stagingBuffers.push_back(stagingBuffer);
-
 			representation.meshBuffers.push_back({
-				vertexBuffer, 
-				positionRange,
-				texCoordRange,
-				normalRange,
+				vertexBufferDetails.buffer,
+				vertexBufferDetails.ranges[0],
+				vertexBufferDetails.ranges[1],
+				vertexBufferDetails.ranges[2],
 
-				indexBuffer, 0, indexBufferSize
+				indexBufferDetails.buffer,
+				indexBufferDetails.ranges[0].first,
+				indexBufferDetails.ranges[0].second
 			});
 
 			//Record copy commands
-			VkBufferCopy copyRegion = { 0, 0, vertexBufferSize };
-			vkCmdCopyBuffer(commandBuffers[0], stagingBuffer.buffer, vertexBuffer.buffer, 1, &copyRegion);
+			VkBufferCopy copyRegion = { vertexBufferDetails.pageOffset, 0, vertexBufferDetails.totalRangeSize };
+			vkCmdCopyBuffer(commandBuffers[0], stagingBuffer.buffer, vertexBufferDetails.buffer, 1, &copyRegion);
 
-			copyRegion = { vertexBufferSize, 0, indexBufferSize };
-			vkCmdCopyBuffer(commandBuffers[0], stagingBuffer.buffer, indexBuffer.buffer, 1, &copyRegion);
+			copyRegion = { indexBufferDetails.pageOffset, 0, indexBufferDetails.totalRangeSize };
+			vkCmdCopyBuffer(commandBuffers[0], stagingBuffer.buffer, indexBufferDetails.buffer, 1, &copyRegion);
 		}
 	});
 
 	//Free staging buffers
-	for (size_t i = 0; i < stagingBuffers.size(); ++i)
-	{
-		device->getRenderDevice()->destroyBuffer(stagingBuffers[i]);
-	}
+	representation.sceneMemory = sceneMemory;
+
+	device->getRenderDevice()->destroyBuffer(stagingBuffer);
 
 	device->buildBLAS(meshBLASList);
 
@@ -539,28 +675,28 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 	//Write position buffers (binding = 1)
 	std::vector<VkDescriptorBufferInfo> vertexPosSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexPosSetWrites.begin(), [](const MeshBuffers& val)
-		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.positionRange.first, val.positionRange.second }; });
+		{ return VkDescriptorBufferInfo{ val.vertexBuffer, val.positionRange.first, val.positionRange.second }; });
 
 	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 1, vertexPosSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write normal buffers (binding = 2)
 	std::vector<VkDescriptorBufferInfo> vertexNormalSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexNormalSetWrites.begin(), [](const MeshBuffers& val)
-		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.normalRange.first, val.normalRange.second }; });
+		{ return VkDescriptorBufferInfo{ val.vertexBuffer, val.normalRange.first, val.normalRange.second }; });
 
 	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 2, vertexNormalSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write texCoord buffers (binding = 3)
 	std::vector<VkDescriptorBufferInfo> vertexTexCoordSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), vertexTexCoordSetWrites.begin(), [](const MeshBuffers& val)
-		{ return VkDescriptorBufferInfo{ val.vertexBuffer.buffer, val.texCoordRange.first, val.texCoordRange.second }; });
+		{ return VkDescriptorBufferInfo{ val.vertexBuffer, val.texCoordRange.first, val.texCoordRange.second }; });
 
 	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 3, vertexTexCoordSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
 	//Write index buffers (binding = 4)
 	std::vector<VkDescriptorBufferInfo> indexSetWrites(scene.meshBuffers.size());
 	std::transform(scene.meshBuffers.begin(), scene.meshBuffers.end(), indexSetWrites.begin(), [](const MeshBuffers& val)
-		{ return VkDescriptorBufferInfo{ val.indexBuffer.buffer, val.indexOffset, val.indexSize }; });
+		{ return VkDescriptorBufferInfo{ val.indexBuffer, val.indexOffset, val.indexSize }; });
 
 	DESC_SET_WRITE_BUFFER(setWrites, scene.descriptorSet, 4, indexSetWrites, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
@@ -689,9 +825,11 @@ Scene::~Scene()
 	//Destroy buffers
 	for (MeshBuffers& buffers : meshBuffers)
 	{
-		device->getRenderDevice()->destroyBuffer(buffers.vertexBuffer);
-		device->getRenderDevice()->destroyBuffer(buffers.indexBuffer);
+		vkDestroyBuffer(deviceHandle, buffers.vertexBuffer, nullptr);
+		vkDestroyBuffer(deviceHandle, buffers.indexBuffer, nullptr);
 	}
+
+	vkFreeMemory(deviceHandle, sceneMemory, nullptr);
 
 	//Destroy texutres
 	for (const std::pair<Image, VkSampler>& texture : textures)

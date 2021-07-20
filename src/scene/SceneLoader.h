@@ -16,12 +16,12 @@ struct Material
 
 struct MeshBuffers
 {
-	Buffer vertexBuffer;
+	VkBuffer vertexBuffer;
 	std::pair<VkDeviceSize, VkDeviceSize> positionRange;
 	std::pair<VkDeviceSize, VkDeviceSize> texCoordRange;
 	std::pair<VkDeviceSize, VkDeviceSize> normalRange;
 
-	Buffer indexBuffer;
+	VkBuffer indexBuffer;
 	VkDeviceSize indexOffset;
 	VkDeviceSize indexSize;
 };
@@ -77,6 +77,8 @@ class Scene
 public:
 	TopLevelAS tlas;
 	std::vector<BottomLevelAS> blasList;
+
+	VkDeviceMemory sceneMemory;
 	std::vector<MeshBuffers> meshBuffers;
 
 	std::vector<std::pair<Image, VkSampler>> textures;

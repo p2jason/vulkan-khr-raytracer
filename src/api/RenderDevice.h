@@ -62,6 +62,8 @@ public:
 	VkCommandPool createCommandPool(VkCommandPoolCreateFlags flags = 0) const;
 	void submit(const std::vector<VkCommandBuffer>& commandBuffers, const std::vector<std::pair<VkSemaphore, VkPipelineStageFlags>>& waitSemaphores, const std::vector<VkSemaphore> signalSemaphores = {}, VkFence signalFence = VK_NULL_HANDLE) const;
 
+	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
+
 	Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
 	VkDeviceAddress getBufferAddress(VkBuffer buffer) const;
 	void destroyBuffer(const Buffer& buffer) const;
