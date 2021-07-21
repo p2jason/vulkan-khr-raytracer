@@ -2,7 +2,7 @@
 
 #include <Common.h>
 
-//#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 #include <assimp/scene.h>
@@ -41,9 +41,6 @@ if (arr.size() > 0) {									\
 	e.push_back(inf);									\
 }
 
-//#define PROGRESS_GUARD(p) std::lock_guard<std::mutex> guard(p->lock)
-//#define PROGRESS_TRANSACTION(p, x) if (p) { PROGRESS_GUARD(p); x; }
-
 class ProgressTracker : public Assimp::ProgressHandler
 {
 private:
@@ -59,6 +56,10 @@ public:
 		return true;
 	}
 };
+
+/**************************************/
+/*       Load scene vertex data       */
+/**************************************/
 
 void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList,
 						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices, const std::vector<bool>& isMaterialOpaque)
@@ -251,8 +252,8 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 			const IndexBufferAllocDetails& indexBufferDetails = indexBufferRanges[i];
 
 			//Bind buffer memory
-			vkBindBufferMemory(deviceHandle, vertexBufferDetails.buffer, sceneMemory, vertexBufferDetails.pageOffset);
-			vkBindBufferMemory(deviceHandle, indexBufferDetails.buffer, sceneMemory, indexBufferDetails.pageOffset);
+			VK_CHECK(vkBindBufferMemory(deviceHandle, vertexBufferDetails.buffer, sceneMemory, vertexBufferDetails.pageOffset));
+			VK_CHECK(vkBindBufferMemory(deviceHandle, indexBufferDetails.buffer, sceneMemory, indexBufferDetails.pageOffset));
 
 			//Write vertex data
 			void* memory = nullptr;
@@ -320,9 +321,9 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	});
 
 	//Free staging buffers
-	representation.sceneMemory = sceneMemory;
-
 	device->getRenderDevice()->destroyBuffer(stagingBuffer);
+
+	representation.meshMemory = sceneMemory;
 
 	device->buildBLAS(meshBLASList);
 
@@ -341,7 +342,11 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	representation.tlas = std::move(tlas);
 }
 
-bool loadMaterialTexture(const aiScene* scene, const char* scenePath, const aiMaterial* material, aiTextureType textureType, int index, std::shared_ptr<uint8_t>& output, int& width, int& height)
+/**************************************/
+/*        Load scene materials        */
+/**************************************/
+
+bool loadMaterialTexture(const aiScene* scene, const char* scenePath, const aiMaterial* material, aiTextureType textureType, int index, std::shared_ptr<uint8_t>& output, int& width, int& height, int& channelCount)
 {
 	//Get texture path
 	aiString name;
@@ -406,166 +411,301 @@ bool loadMaterialTexture(const aiScene* scene, const char* scenePath, const aiMa
 		output = std::shared_ptr<uint8_t>((uint8_t*)imageMemory, stbi_image_free);
 	}
 
+	channelCount = 4;
+
 	return true;
 }
 
-bool checkHasAlpha(std::shared_ptr<uint8_t> output, int width, int height)
+struct ImageAllocDetails
 {
-	uint32_t* pixelPointer = (uint32_t*)output.get();
+	VkImage image;
+	VkImageView imageView;
+	VkSampler sampler;
 
-	for (int y = 0; y < height; ++y)
+	VkFormat imageFormat;
+
+	//The offset of the image within the allocation it takes its memory from
+	VkDeviceSize pageOffset;
+
+	//The actual size of the image (as returned by `vkGetBufferMemoryRequirements`)
+	VkDeviceSize actualSize;
+
+	//The smallest amount of memory it would take to store
+	//all the pixels of the imported image (width * height * channels * bytes_per_channel)
+	VkDeviceSize baseSize;
+
+	int width;
+	int height;
+	std::shared_ptr<uint8_t> textureData;
+};
+
+bool pushTexture(const RaytracingDevice* device, const char* scenePath, const aiScene* scene, std::vector<ImageAllocDetails>& imageAllocDetails, int materialIndex, aiTextureType textureType, uint32_t& textureIndex)
+{
+	VkDevice deviceHandle = device->getRenderDevice()->getDevice();
+
+	//TODO: Only 3 channels for some materials
+
+	int width = 0;
+	int height = 0;
+	int channelCount = 0;
+	std::shared_ptr<uint8_t> textureData = nullptr;
+
+	bool hasAlpha = false;
+
+	if (loadMaterialTexture(scene, scenePath, scene->mMaterials[materialIndex], textureType, 0, textureData, width, height, channelCount))
 	{
-		for (int x = 0; x < width; ++x)
+		//Check if texture has alpha
+		uint32_t* pixelPointer = (uint32_t*)textureData.get();
+
+		for (int y = 0; y < height && !hasAlpha; ++y)
 		{
-			if (((pixelPointer[y * width + x] >> 24) & 0xFF) != 0xFF)
+			for (int x = 0; x < width; ++x)
 			{
-				return true;
+				if (((pixelPointer[y * width + x] >> 24) & 0xFF) != 0xFF)
+				{
+					hasAlpha = true;
+					break;
+				}
 			}
 		}
+
+		ImageAllocDetails allocDetails = {};
+		allocDetails.width = width;
+		allocDetails.height = height;
+		allocDetails.textureData = textureData;
+		allocDetails.baseSize = width * height * channelCount;
+
+		allocDetails.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+
+		//Create image
+		VkImageCreateInfo imageCI = {};
+		imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageCI.imageType = VK_IMAGE_TYPE_2D;
+		imageCI.format = allocDetails.imageFormat;
+		imageCI.extent = { (uint32_t)width, (uint32_t)height, 1 };
+		imageCI.mipLevels = 1;
+		imageCI.arrayLayers = 1;
+		imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageCI.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		imageCI.queueFamilyIndexCount = 0;
+		imageCI.pQueueFamilyIndices = nullptr;
+		imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		
+		VK_CHECK(vkCreateImage(deviceHandle, &imageCI, nullptr, &allocDetails.image));
+
+		//Create sampler
+		VkSamplerCreateInfo samplerCI = {};
+		samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerCI.magFilter = VK_FILTER_LINEAR;
+		samplerCI.minFilter = VK_FILTER_LINEAR;
+		samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerCI.mipLodBias = 0.0f;
+		samplerCI.anisotropyEnable = VK_FALSE;
+		samplerCI.maxAnisotropy = 1.0f;
+		samplerCI.compareEnable = VK_FALSE;
+		samplerCI.compareOp = VK_COMPARE_OP_NEVER;
+		samplerCI.minLod = 0.0f;
+		samplerCI.maxLod = 1.0f;
+		samplerCI.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerCI.unnormalizedCoordinates = VK_FALSE;
+
+		VK_CHECK(vkCreateSampler(deviceHandle, &samplerCI, nullptr, &allocDetails.sampler));
+
+		textureIndex = (uint32_t)imageAllocDetails.size();
+		imageAllocDetails.push_back(allocDetails);
+	}
+	else
+	{
+		hasAlpha = true;
+		textureIndex = (uint32_t)-1;
 	}
 
-	return false;
-}
-
-std::pair<Image, VkSampler> uploadTexture(const RaytracingDevice* device, VkCommandBuffer commandBuffer, std::shared_ptr<uint8_t> data, int width, int height, std::vector<Buffer>& stagingBuffers)
-{
-	const RenderDevice* renderDevice = device->getRenderDevice();
-
-	VkDeviceSize imageSize = 4 * (VkDeviceSize)width * height;
-
-	//Create staging buffer and copy image data to it
-	Image texture = renderDevice->createImage2D(width, height, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	Buffer stagingBuffer = renderDevice->createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-	void* memory = nullptr;
-	VK_CHECK(vkMapMemory(renderDevice->getDevice(), stagingBuffer.memory, 0, imageSize, 0, &memory));
-
-	memcpy(memory, data.get(), imageSize);
-
-	vkUnmapMemory(renderDevice->getDevice(), stagingBuffer.memory);
-
-	//Create texture sampler
-	VkSamplerCreateInfo samplerCI = {};
-	samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerCI.magFilter = VK_FILTER_LINEAR;
-	samplerCI.minFilter = VK_FILTER_LINEAR;
-	samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerCI.mipLodBias = 0.0f;
-	samplerCI.anisotropyEnable = VK_FALSE;
-	samplerCI.maxAnisotropy = 1.0f;
-	samplerCI.compareEnable = VK_FALSE;
-	samplerCI.compareOp = VK_COMPARE_OP_NEVER;
-	samplerCI.minLod = 0.0f;
-	samplerCI.maxLod = 1.0f;
-	samplerCI.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	samplerCI.unnormalizedCoordinates = VK_FALSE;
-
-	VkSampler sampler;
-	VK_CHECK(vkCreateSampler(renderDevice->getDevice(), &samplerCI, nullptr, &sampler));
-
-	//Record buffer-to-image copy commands
-	VkImageMemoryBarrier imageBarrier = {};
-	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	imageBarrier.srcAccessMask = 0;
-	imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageBarrier.image = texture.image;
-	imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageBarrier.subresourceRange.baseArrayLayer = 0;
-	imageBarrier.subresourceRange.layerCount = 1;
-	imageBarrier.subresourceRange.baseMipLevel = 0;
-	imageBarrier.subresourceRange.levelCount = 1;
-
-	vkCmdPipelineBarrier(commandBuffer,
-		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-
-	VkBufferImageCopy region = {};
-	region.bufferOffset = 0;
-	region.bufferRowLength = 0;
-	region.bufferImageHeight = 0;
-	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.layerCount = 1;
-	region.imageSubresource.mipLevel = 0;
-	region.imageOffset = { 0, 0, 0 };
-	region.imageExtent = { (uint32_t)width, (uint32_t)height, 1 };
-
-	vkCmdCopyBufferToImage(commandBuffer, stagingBuffer.buffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-	imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	imageBarrier.dstAccessMask = 0;
-	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-	vkCmdPipelineBarrier(commandBuffer,
-		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-		0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-
-	stagingBuffers.push_back(stagingBuffer);
-
-	return std::make_pair(texture, sampler);
+	return hasAlpha;
 }
 
 void loadMaterials(const RaytracingDevice* device, const char* scenePath, const aiScene* scene, Scene& representation, std::shared_ptr<SceneLoadProgress> progress)
 {
 	const RenderDevice* renderDevice = device->getRenderDevice();
+	VkDevice deviceHandle = renderDevice->getDevice();
 
-	std::vector<Buffer> stagingBuffers;
+	//Load material textures
+	std::vector<ImageAllocDetails> imageAllocDetails;
 
-	std::cout << "Loading materials (" << scene->mNumMaterials << ")... ";
+	for (unsigned int i = 0; i < scene->mNumMaterials; ++i)
+	{
+		Material material;
 
-	auto start = std::chrono::high_resolution_clock::now();
+		bool hasAlpha = pushTexture(device, scenePath, scene, imageAllocDetails, i, aiTextureType_DIFFUSE, material.albedoIndex);
 
-	device->getRenderDevice()->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
+		//Add material to scene and update progress
+		representation.materials.push_back(material);
+		representation.isMaterialOpaque.push_back(!hasAlpha);
+
+		progress->setStageProgress((float)i / (scene->mNumMaterials + 1));
+	}
+
+	//Calculate memory requirements
+	//Note: Look at buffer allocation for more details
+	VkDeviceSize totalImageSize = 0;
+	uint32_t mutualMemoryTypeBits = 0xFFFFFFFF;
+
+	//Images can take up more space than their base size (eg. because
+	//of mipmapping). Allocating staging memory based on the image's
+	//actual size can be wasteful.
+	VkDeviceSize totalImageBaseSize = 0;
+
+	std::vector<std::pair<VkDeviceSize, VkDeviceSize>> imageRanges;
+
+	for (size_t i = 0; i < imageAllocDetails.size(); ++i)
+	{
+		ImageAllocDetails& allocDetails = imageAllocDetails[i];
+
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(deviceHandle, allocDetails.image, &memRequirements);
+
+		allocDetails.pageOffset = UINT32_ALIGN(totalImageSize, memRequirements.alignment);
+		allocDetails.actualSize = memRequirements.size;
+
+		totalImageSize = allocDetails.pageOffset + allocDetails.actualSize;
+		totalImageBaseSize += allocDetails.baseSize;
+
+		mutualMemoryTypeBits &= memRequirements.memoryTypeBits;
+	}
+
+	//Allocate memory
+	if (!mutualMemoryTypeBits)
+	{
+		FATAL_ERROR("Could not find memory type that supports all images");
+	}
+
+	//Allocate scene memory
+	uint32_t sceneMemTypeIndex = device->getRenderDevice()->findMemoryType(mutualMemoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	if (sceneMemTypeIndex == (uint32_t)-1)
+	{
+		FATAL_ERROR("Could not find appropriate memory type for scene");
+	}
+
+	VkMemoryAllocateInfo memAllocInfo = {};
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.allocationSize = totalImageSize;
+	memAllocInfo.memoryTypeIndex = sceneMemTypeIndex;
+
+	VkDeviceMemory imageMemory = VK_NULL_HANDLE;
+	VK_CHECK(vkAllocateMemory(deviceHandle, &memAllocInfo, nullptr, &imageMemory));
+
+	//Upload image data
+	Buffer stagingBuffer = renderDevice->createBuffer(totalImageBaseSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	//We are going to reuse `totalImageBaseSize` to keep track
+	//of copy offsets
+	totalImageBaseSize = 0;
+
+	renderDevice->executeCommands(1, [&](VkCommandBuffer* commandBuffers)
 	{
 		//Load materials
-		for (unsigned int i = 0; i < scene->mNumMaterials; ++i)
+		for (size_t i = 0; i < imageAllocDetails.size(); ++i)
 		{
-			int width;
-			int height;
-			std::shared_ptr<uint8_t> albedoData = nullptr;
+			ImageAllocDetails& allocDetails = imageAllocDetails[i];
 
-			Material material;
+			VK_CHECK(vkBindImageMemory(deviceHandle, allocDetails.image, imageMemory, allocDetails.pageOffset));
 
-			//Load albedo texture
-			if (loadMaterialTexture(scene, scenePath, scene->mMaterials[i], aiTextureType_DIFFUSE, 0, albedoData, width, height))
-			{
-				representation.isMaterialOpaque.push_back(!checkHasAlpha(albedoData, width, height));
+			//Create image view
+			VkImageViewCreateInfo imageViewCI = {};
+			imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			imageViewCI.image = allocDetails.image;
+			imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			imageViewCI.format = allocDetails.imageFormat;
+			imageViewCI.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCI.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCI.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCI.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			imageViewCI.subresourceRange.baseMipLevel = 0;
+			imageViewCI.subresourceRange.levelCount = 1;
+			imageViewCI.subresourceRange.baseArrayLayer = 0;
+			imageViewCI.subresourceRange.layerCount = 1;
 
-				material.albedoIndex = (uint32_t)representation.textures.size();
-				representation.textures.push_back(uploadTexture(device, commandBuffers[0], albedoData, width, height, stagingBuffers));
-			}
-			else
-			{
-				representation.isMaterialOpaque.push_back(true);
+			VK_CHECK(vkCreateImageView(deviceHandle, &imageViewCI, nullptr, &allocDetails.imageView));
 
-				material.albedoIndex = (uint32_t)-1;
-			}
+			//Copy image data to staging buffer
+			void* mem = nullptr;
+			VK_CHECK(vkMapMemory(deviceHandle, stagingBuffer.memory, totalImageBaseSize, allocDetails.baseSize, 0, &mem));
 
-			progress->setStageProgress((float)i / (scene->mNumMaterials + 1));
+			memcpy(mem, allocDetails.textureData.get(), allocDetails.baseSize);
 
-			representation.materials.push_back(material);
+			vkUnmapMemory(deviceHandle, stagingBuffer.memory);
+
+			//Original texture data is not needed
+			allocDetails.textureData = nullptr;
+
+			//Record buffer-to-image copy commands
+			VkImageMemoryBarrier imageBarrier = {};
+			imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			imageBarrier.srcAccessMask = 0;
+			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageBarrier.image = allocDetails.image;
+			imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			imageBarrier.subresourceRange.baseArrayLayer = 0;
+			imageBarrier.subresourceRange.layerCount = 1;
+			imageBarrier.subresourceRange.baseMipLevel = 0;
+			imageBarrier.subresourceRange.levelCount = 1;
+
+			vkCmdPipelineBarrier(commandBuffers[0],
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+				0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+			VkBufferImageCopy region = {};
+			region.bufferOffset = totalImageBaseSize;
+			region.bufferRowLength = 0;
+			region.bufferImageHeight = 0;
+			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.imageSubresource.baseArrayLayer = 0;
+			region.imageSubresource.layerCount = 1;
+			region.imageSubresource.mipLevel = 0;
+			region.imageOffset = { 0, 0, 0 };
+			region.imageExtent = { (uint32_t)allocDetails.width, (uint32_t)allocDetails.height, 1 };
+
+			vkCmdCopyBufferToImage(commandBuffers[0], stagingBuffer.buffer, allocDetails.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarrier.dstAccessMask = 0;
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+			vkCmdPipelineBarrier(commandBuffers[0],
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+				0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+
+			//Increment offset
+			totalImageBaseSize += allocDetails.baseSize;
 		}
 	});
 
-	progress->setStageProgress(1.0f);
-
-	for (size_t i = 0; i < stagingBuffers.size(); ++i)
+	//Add textures to scene representation
+	for (size_t i = 0; i < imageAllocDetails.size(); ++i)
 	{
-		renderDevice->destroyBuffer(stagingBuffers[i]);
+		ImageAllocDetails allocDetails = imageAllocDetails[i];
+
+		representation.textures.push_back(std::make_tuple(allocDetails.image, allocDetails.imageView, allocDetails.sampler));
 	}
 
-	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f << "s" << std::endl;
+	representation.textureMemory = imageMemory;
+
+	renderDevice->destroyBuffer(stagingBuffer);
+
+	progress->setStageProgress(1.0f);
 }
 
 void uploadMaterialMappings(const RaytracingDevice* device, Scene& representation, const std::vector<uint32_t>& materialIndices)
@@ -702,8 +842,8 @@ void createSceneDescriptorSets(const RaytracingDevice* raytracingDevice, Scene& 
 
 	//Write textures (binding = 5)
 	std::vector<VkDescriptorImageInfo> imageSetWrites(scene.textures.size());
-	std::transform(scene.textures.begin(), scene.textures.end(), imageSetWrites.begin(), [](const std::pair<Image, VkSampler>& texture)
-		{ return VkDescriptorImageInfo{ texture.second, texture.first.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; });
+	std::transform(scene.textures.begin(), scene.textures.end(), imageSetWrites.begin(), [](const std::tuple<VkImage, VkImageView, VkSampler>& texture)
+		{ return VkDescriptorImageInfo{ std::get<2>(texture), std::get<1>(texture), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; });
 
 	DESC_SET_WRITE_IMAGE(setWrites, scene.descriptorSet, 5, imageSetWrites, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
@@ -829,15 +969,17 @@ Scene::~Scene()
 		vkDestroyBuffer(deviceHandle, buffers.indexBuffer, nullptr);
 	}
 
-	vkFreeMemory(deviceHandle, sceneMemory, nullptr);
+	vkFreeMemory(deviceHandle, meshMemory, nullptr);
 
 	//Destroy texutres
-	for (const std::pair<Image, VkSampler>& texture : textures)
+	for (const std::tuple<VkImage, VkImageView, VkSampler>& texture : textures)
 	{
-		device->getRenderDevice()->destroyImage(texture.first);
-
-		vkDestroySampler(deviceHandle, texture.second, nullptr);
+		vkDestroyImage(deviceHandle, std::get<0>(texture), nullptr);
+		vkDestroyImageView(deviceHandle, std::get<1>(texture), nullptr);
+		vkDestroySampler(deviceHandle, std::get<2>(texture), nullptr);
 	}
+
+	vkFreeMemory(deviceHandle, textureMemory, nullptr);
 
 	device->getRenderDevice()->destroyBuffer(materialBuffer);
 

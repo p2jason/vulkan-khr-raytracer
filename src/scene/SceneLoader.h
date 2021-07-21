@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <tuple>
 #include <memory>
 #include <mutex>
 #include <atomic>
@@ -78,10 +79,19 @@ public:
 	TopLevelAS tlas;
 	std::vector<BottomLevelAS> blasList;
 
-	VkDeviceMemory sceneMemory;
+	//The memory from which all mesh buffers are allocated (this does 
+	//not include acceleration structures, only vertex and index data)
+	VkDeviceMemory meshMemory;
+
+	//All buffers in `meshBuffers` are allocated from `sceneMemory`
 	std::vector<MeshBuffers> meshBuffers;
 
-	std::vector<std::pair<Image, VkSampler>> textures;
+	//The memory from which all texture are allocated
+	VkDeviceMemory textureMemory;
+
+	//All textures that are needed by the scene
+	std::vector<std::tuple<VkImage, VkImageView, VkSampler>> textures;
+
 	std::vector<Material> materials;
 	std::vector<bool> isMaterialOpaque;
 	Buffer materialBuffer;

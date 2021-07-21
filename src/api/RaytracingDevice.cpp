@@ -271,7 +271,7 @@ void RaytracingDevice::buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerat
 	VkDeviceSize instanceBufferSize = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
 
 	//Allocate instance buffer
-	Buffer instanceBuffer = m_renderDevice->createBuffer(instanceBufferSize, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	Buffer instanceBuffer = m_renderDevice->createBuffer(instanceBufferSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	VkDeviceAddress instanceAddress = m_renderDevice->getBufferAddress(instanceBuffer.buffer);
 
 	//Copy instance content
