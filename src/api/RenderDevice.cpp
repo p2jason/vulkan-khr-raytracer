@@ -567,8 +567,6 @@ Buffer RenderDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, V
 		FATAL_ERROR("Could not find appropriate memory type for buffer");
 	}
 
-	std::cout << "Allocating memory\n";
-
 	VkDeviceMemory memory;
 	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &memory));
 	VK_CHECK(vkBindBufferMemory(m_device, buffer, memory, 0));
@@ -628,8 +626,6 @@ Image RenderDevice::createImage2D(int width, int height, VkFormat format, int mi
 	{
 		FATAL_ERROR("Could not find appropriate memory type for image");
 	}
-
-	std::cout << "Allocating memory\n";
 
 	VkDeviceMemory memory;
 	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &memory));

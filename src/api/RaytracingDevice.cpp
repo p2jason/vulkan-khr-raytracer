@@ -117,7 +117,7 @@ VkAccelerationStructureInstanceKHR RaytracingDevice::compileInstances(const Bott
 	//Get acceleration structure address
 	VkAccelerationStructureDeviceAddressInfoKHR addressInfo = {};
 	addressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-	addressInfo.accelerationStructure = blas.m_accelerationStructure;
+	addressInfo.accelerationStructure = blas.accelerationStructure;
 
 	VkDeviceAddress accelAddress = vkGetAccelerationStructureDeviceAddressKHR(m_renderDevice->getDevice(), &addressInfo);
 
@@ -135,20 +135,148 @@ VkAccelerationStructureInstanceKHR RaytracingDevice::compileInstances(const Bott
 	return instance;
 }
 
-void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
+/*
+	//Allocate acceleration structure buffer
+	m_accelStorageBuffer = device->getRenderDevice()->createBuffer(m_sizeInfo.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	//Create acceleration structure
+	VkAccelerationStructureCreateInfoKHR createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+	createInfo.buffer = m_accelStorageBuffer.buffer;
+	createInfo.offset = 0;
+	createInfo.size = m_sizeInfo.accelerationStructureSize;
+	createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+	VK_CHECK(vkCreateAccelerationStructureKHR(device->getRenderDevice()->getDevice(), &createInfo, nullptr, &m_accelerationStructure));
+
+	m_buildInfo.dstAccelerationStructure = m_accelerationStructure;
+	m_geometryInfo = geometryInfo;
+	m_device = device;
+*/
+
+BLASBuildResult RaytracingDevice::buildBLAS(std::vector<BLASCreateInfo>& blasCIList) const
 {
-	std::cout << "Building BLAS list (" << blasList.size() << "): ";
-	std::cout << "Preparing... ";
+	VkDevice deviceHandle = m_renderDevice->getDevice();
 
-	//Allocate scratch memory
-	VkDeviceSize scratchSize = 0;
+	std::vector<BottomLevelAS> blasList;
+	std::vector<std::pair<VkDeviceSize, VkDeviceSize>> blasRanges;
 
-	for (size_t i = 0; i < blasList.size(); ++i)
+	const VkBufferUsageFlags accelStructBufferUsage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	const VkBufferUsageFlags scratchBufferUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+	const VkMemoryPropertyFlags accelStructMemoryPropery = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	const VkMemoryPropertyFlags scratchMemoryPropery = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+	/* Pull BLAS size details */
+	VkDeviceSize totalStoreSize = 0;
+	VkDeviceSize maxScratchSize = 0;
+
+	uint32_t mutualMemoryTypeBits = 0xFFFFFFFF;
+
+	for (const BLASCreateInfo& createInfo : blasCIList)
 	{
-		scratchSize = std::max(blasList[i].getSizeInfo().buildScratchSize, scratchSize);
+		/*
+		 ----------------------------------
+		      Note on BLAS construction 
+		 ----------------------------------
+
+		`VkAccelerationStructureBuildGeometryInfoKHR` takes an array of `VkAccelerationStructureGeometryKHR`,
+		each of which represents some geometry that the acceleration structure will be built from. When calling
+		`vkGetAccelerationStructureBuildSizesKHR`, `pMaxPrimitiveCounts` is an array parrallel to `pGeometries`,
+		where each entry is the number of primitives in its respective entry in `pGeometries`.
+		*/
+
+		BottomLevelAS blas;
+		blas.geometryInfo = std::move(createInfo.geometryInfo);
+
+		blas.buildInfo = {};
+		blas.buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+		blas.buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		blas.buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+		blas.buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+		blas.buildInfo.dstAccelerationStructure = VK_NULL_HANDLE;
+		blas.buildInfo.geometryCount = (uint32_t)createInfo.geometryInfo->geometryArray.size();
+		blas.buildInfo.pGeometries = createInfo.geometryInfo->geometryArray.data();
+		blas.buildInfo.flags = createInfo.flags;
+
+		//Query acceleration structure size
+		std::vector<uint32_t> maxPrimitiveCount(blas.buildInfo.geometryCount);
+		
+		for (size_t i = 0; i < blas.buildInfo.geometryCount; ++i)
+		{
+			maxPrimitiveCount[i] = createInfo.geometryInfo->rangeInfoArray[i].primitiveCount;
+		}
+
+		blas.sizeInfo = {};
+		blas.sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+
+		vkGetAccelerationStructureBuildSizesKHR(deviceHandle, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &blas.buildInfo, maxPrimitiveCount.data(), &blas.sizeInfo);
+
+		//Create acceleration structure buffer
+		VkBufferCreateInfo bufferCI = {};
+		bufferCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferCI.size = blas.sizeInfo.accelerationStructureSize;
+		bufferCI.usage = accelStructBufferUsage;
+		bufferCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferCI.queueFamilyIndexCount = 0;
+		bufferCI.pQueueFamilyIndices = nullptr;
+
+		VK_CHECK(vkCreateBuffer(deviceHandle, &bufferCI, nullptr, &blas.accelStorageBuffer));
+
+		//Create acceleration structure
+		VkAccelerationStructureCreateInfoKHR createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+		createInfo.buffer = blas.accelStorageBuffer;
+		createInfo.offset = 0;
+		createInfo.size = blas.sizeInfo.accelerationStructureSize;
+		createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+		VK_CHECK(vkCreateAccelerationStructureKHR(deviceHandle, &createInfo, nullptr, &blas.accelerationStructure));
+
+		blas.buildInfo.dstAccelerationStructure = blas.accelerationStructure;
+
+		//Update memory requirements
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(deviceHandle, blas.accelStorageBuffer, &memRequirements);
+
+		VkDeviceSize pageOffset = UINT32_ALIGN(totalStoreSize, memRequirements.alignment);
+		VkDeviceSize actualSize = memRequirements.size;
+
+		totalStoreSize = pageOffset + actualSize;
+
+		mutualMemoryTypeBits &= memRequirements.memoryTypeBits;
+
+		maxScratchSize = std::max(blas.sizeInfo.buildScratchSize, maxScratchSize);
+
+		blasRanges.push_back(std::make_pair(pageOffset, actualSize));
+		blasList.push_back(blas);
 	}
 
-	Buffer scratchMemory = m_renderDevice->createBuffer(scratchSize, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	//Allocate memory
+	if (!mutualMemoryTypeBits)
+	{
+		FATAL_ERROR("Could not find memory type that supports all bottom-level acceleration structures");
+	}
+
+	uint32_t memTypeIndex = m_renderDevice->findMemoryType(mutualMemoryTypeBits, accelStructMemoryPropery);
+
+	if (memTypeIndex == (uint32_t)-1)
+	{
+		FATAL_ERROR("Could not find appropriate memory type for acceleration strctures");
+	}
+
+	//Allocate storage memory
+	VkMemoryAllocateInfo memAllocInfo = {};
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.allocationSize = totalStoreSize;
+	memAllocInfo.memoryTypeIndex = memTypeIndex;
+
+	VkDeviceMemory accelStructMemory = VK_NULL_HANDLE;
+	VK_CHECK(vkAllocateMemory(deviceHandle, &memAllocInfo, nullptr, &accelStructMemory));
+
+	std::cout << "Building BLAS list (" << blasList.size() << "): ";
+
+	Buffer scratchMemory = m_renderDevice->createBuffer(maxScratchSize, scratchBufferUsage, scratchMemoryPropery);
 	VkDeviceAddress scratchAddress = m_renderDevice->getBufferAddress(scratchMemory.buffer);
 
 	//Create query pool to store acceleration structure properties
@@ -170,11 +298,18 @@ void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
 	{
 		for (int i = 0; i < (int)blasList.size(); ++i)
 		{
-			VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].getBuildInfo();
+			//Bind memory to acceleration structure
+			VK_CHECK(vkBindBufferMemory(deviceHandle, blasList[i].accelStorageBuffer, accelStructMemory, blasRanges[i].first));
+
+			//Build acceleration structure
+			VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].buildInfo;
 			buildInfo.scratchData.deviceAddress = scratchAddress;
 
-			std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> ppBuildRangeInfos(blasList[i].getGeometryInfo()->rangeInfoArray.size());
-			std::transform(blasList[i].getGeometryInfo()->rangeInfoArray.cbegin(), blasList[i].getGeometryInfo()->rangeInfoArray.cend(), ppBuildRangeInfos.begin(), [](const VkAccelerationStructureBuildRangeInfoKHR& range) { return &range; });
+			std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> ppBuildRangeInfos(blasList[i].geometryInfo->rangeInfoArray.size());
+			for (size_t j = 0; j < blasList[i].geometryInfo->rangeInfoArray.size(); ++j)
+			{
+				ppBuildRangeInfos[j] = &blasList[i].geometryInfo->rangeInfoArray[j];
+			}
 
 			vkCmdBuildAccelerationStructuresKHR(commandBuffers[i], 1, &buildInfo, ppBuildRangeInfos.data());
 
@@ -192,7 +327,7 @@ void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
 
 			if ((buildInfo.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR) == VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
 			{
-				VkAccelerationStructureKHR accelStruct = blasList[i].get();
+				VkAccelerationStructureKHR accelStruct = blasList[i].accelerationStructure;
 
 				vkCmdWriteAccelerationStructuresPropertiesKHR(commandBuffers[i], 1, &accelStruct, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, queryPool, i);
 			}
@@ -201,66 +336,140 @@ void RaytracingDevice::buildBLAS(std::vector<BottomLevelAS>& blasList) const
 
 	std::cout << "Compacting... ";
 
-	std::vector<BottomLevelAS> oldBLASes = blasList;
+	const std::vector<BottomLevelAS> oldBLASes = blasList;
 
-	VkDeviceSize totalOriginalSize = 0;
-	VkDeviceSize totalCompactSize = 0;
+	//Create compact acceleration structures
+	VkDeviceSize totalOriginalSize = totalStoreSize;
+
+	mutualMemoryTypeBits = 0xFFFFFFFF;
+	totalStoreSize = 0;
+
+	for (int i = 0; i < (int)blasList.size(); ++i)
+	{
+		//Get compact size
+		VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].buildInfo;
+
+		if ((buildInfo.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR) != VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
+		{
+			continue;
+		}
+
+		VkDeviceSize compactSize = 0;
+		VK_CHECK(vkGetQueryPoolResults(m_renderDevice->getDevice(), queryPool, i, 1, sizeof(VkDeviceSize), &compactSize, sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT));
+
+		assert(compactSize != (VkDeviceSize)-1 && compactSize > 0);
+
+		//Create new buffer
+		VkBufferCreateInfo bufferCI = {};
+		bufferCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferCI.size = compactSize;
+		bufferCI.usage = accelStructBufferUsage;
+		bufferCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferCI.queueFamilyIndexCount = 0;
+		bufferCI.pQueueFamilyIndices = nullptr;
+
+		VK_CHECK(vkCreateBuffer(deviceHandle, &bufferCI, nullptr, &blasList[i].accelStorageBuffer));
+
+		VkAccelerationStructureCreateInfoKHR createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+		createInfo.buffer = blasList[i].accelStorageBuffer;
+		createInfo.offset = 0;
+		createInfo.size = compactSize;
+		createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+		VK_CHECK(vkCreateAccelerationStructureKHR(m_renderDevice->getDevice(), &createInfo, nullptr, &blasList[i].accelerationStructure));
+
+		//Update memory requirements
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(deviceHandle, blasList[i].accelStorageBuffer, &memRequirements);
+
+		VkDeviceSize pageOffset = UINT32_ALIGN(totalStoreSize, memRequirements.alignment);
+		VkDeviceSize actualSize = memRequirements.size;
+
+		totalStoreSize = pageOffset + actualSize;
+
+		mutualMemoryTypeBits &= memRequirements.memoryTypeBits;
+
+		maxScratchSize = std::max(blasList[i].sizeInfo.buildScratchSize, maxScratchSize);
+
+		blasRanges[i] = std::make_pair(pageOffset, actualSize);
+	}
+
+	if (!mutualMemoryTypeBits)
+	{
+		FATAL_ERROR("Could not find memory type that supports all bottom-level acceleration structures");
+	}
+
+	memTypeIndex = m_renderDevice->findMemoryType(mutualMemoryTypeBits, accelStructMemoryPropery);
+
+	if (memTypeIndex == (uint32_t)-1)
+	{
+		FATAL_ERROR("Could not find appropriate memory type for acceleration strctures");
+	}
+
+	//Allocate compact storage memory
+	memAllocInfo = {};
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.allocationSize = totalStoreSize;
+	memAllocInfo.memoryTypeIndex = memTypeIndex;
+
+	VkDeviceMemory compactAccelStructMemory = VK_NULL_HANDLE;
+	VK_CHECK(vkAllocateMemory(deviceHandle, &memAllocInfo, nullptr, &compactAccelStructMemory));
 
 	m_renderDevice->executeCommands(1, [&](VkCommandBuffer* commandBuffer)
 	{
 		for (int i = 0; i < (int)blasList.size(); ++i)
 		{
-			VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].getBuildInfo();
+			VkAccelerationStructureBuildGeometryInfoKHR buildInfo = blasList[i].buildInfo;
 			
 			if ((buildInfo.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR) != VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
 			{
 				continue;
 			}
 
-			VkDeviceSize compactSize = 0;
-			VK_CHECK(vkGetQueryPoolResults(m_renderDevice->getDevice(), queryPool, i, 1, sizeof(VkDeviceSize), &compactSize, sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT));
-
-			assert(compactSize != (VkDeviceSize)-1 && compactSize > 0);
-
-			blasList[i].m_accelStorageBuffer = m_renderDevice->createBuffer(compactSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-			VkAccelerationStructureCreateInfoKHR createInfo = {};
-			createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-			createInfo.buffer = blasList[i].m_accelStorageBuffer.buffer;
-			createInfo.offset = 0;
-			createInfo.size = compactSize;
-			createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-
-			VK_CHECK(vkCreateAccelerationStructureKHR(m_renderDevice->getDevice(), &createInfo, nullptr, &blasList[i].m_accelerationStructure));
+			//Bind memory to acceleration structure
+			VK_CHECK(vkBindBufferMemory(deviceHandle, blasList[i].accelStorageBuffer, compactAccelStructMemory, blasRanges[i].first));
 
 			VkCopyAccelerationStructureInfoKHR copyInfo = {};
 			copyInfo.sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR;
-			copyInfo.src = oldBLASes[i].m_accelerationStructure;
-			copyInfo.dst = blasList[i].m_accelerationStructure;
+			copyInfo.src = oldBLASes[i].accelerationStructure;
+			copyInfo.dst = blasList[i].accelerationStructure;
 			copyInfo.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
 
 			vkCmdCopyAccelerationStructureKHR(commandBuffer[0], &copyInfo);
-
-			//Update structure size info
-			totalOriginalSize += blasList[i].getSizeInfo().accelerationStructureSize;
-			totalCompactSize += compactSize;
 		}
 	});
 
 	std::cout << "Finished!" << std::endl;
 	std::cout << "    -Total original size: " << (totalOriginalSize / 1024.0f) << "KB" << std::endl;
-	std::cout << "    -Total compact size:  " << (totalCompactSize / 1024.0f) << "KB" << std::endl;
-	std::cout << "    -Compaction ratio:    " << (float)((100.0 * totalCompactSize) / totalOriginalSize) << "%" << std::endl;;
+	std::cout << "    -Total compact size:  " << (totalStoreSize / 1024.0f) << "KB" << std::endl;
+	std::cout << "    -Compaction ratio:    " << (float)((100.0 * totalStoreSize) / totalOriginalSize) << "%" << std::endl;;
 
 	//Destroy resources
-	for (int i = 0; i < (int)blasList.size(); ++i)
+	for (int i = 0; i < (int)oldBLASes.size(); ++i)
 	{
-		oldBLASes[i].destroy();
+		destroyBLAS(oldBLASes[i]);
 	}
 
 	m_renderDevice->destroyBuffer(scratchMemory);
 
+	vkFreeMemory(deviceHandle, accelStructMemory, nullptr);
 	vkDestroyQueryPool(m_renderDevice->getDevice(), queryPool, nullptr);
+
+	return { blasList, compactAccelStructMemory };
+}
+
+void RaytracingDevice::destroyBLAS(const BottomLevelAS& blas) const
+{
+	if (blas.accelerationStructure != VK_NULL_HANDLE)
+	{
+		vkDestroyAccelerationStructureKHR(m_renderDevice->getDevice(), blas.accelerationStructure, nullptr);
+	}
+
+	if (blas.accelStorageBuffer != VK_NULL_HANDLE)
+	{
+		vkDestroyBuffer(m_renderDevice->getDevice(), blas.accelStorageBuffer, nullptr);
+	}
 }
 
 void RaytracingDevice::buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerationStructureInstanceKHR>& instances, VkBuildAccelerationStructureFlagsKHR flags) const
@@ -370,55 +579,6 @@ std::vector<const char*> RaytracingDevice::getRequiredExtensions() const
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 		VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
 	};
-}
-
-void BottomLevelAS::init(const RaytracingDevice* device, std::shared_ptr<const BLASGeometryInfo> geometryInfo, VkBuildAccelerationStructureFlagsKHR flags)
-{
-	m_buildInfo = {};
-	m_buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-	m_buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-	m_buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-	m_buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
-	m_buildInfo.dstAccelerationStructure = VK_NULL_HANDLE;
-	m_buildInfo.geometryCount = (uint32_t)geometryInfo->geometryArray.size();
-	m_buildInfo.pGeometries = geometryInfo->geometryArray.data();
-	m_buildInfo.flags = flags;
-
-	//Query acceleration structure size
-	std::vector<uint32_t> maxPrimitiveCount(geometryInfo->rangeInfoArray.size());
-	std::transform(geometryInfo->rangeInfoArray.cbegin(), geometryInfo->rangeInfoArray.cend(), maxPrimitiveCount.begin(), [](VkAccelerationStructureBuildRangeInfoKHR range) { return range.primitiveCount; });
-
-	m_sizeInfo = {};
-	m_sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-
-	vkGetAccelerationStructureBuildSizesKHR(device->getRenderDevice()->getDevice(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &m_buildInfo, maxPrimitiveCount.data(), &m_sizeInfo);
-
-	//Allocate acceleration structure buffer
-	m_accelStorageBuffer = device->getRenderDevice()->createBuffer(m_sizeInfo.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	//Create acceleration structure
-	VkAccelerationStructureCreateInfoKHR createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-	createInfo.buffer = m_accelStorageBuffer.buffer;
-	createInfo.offset = 0;
-	createInfo.size = m_sizeInfo.accelerationStructureSize;
-	createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-
-	VK_CHECK(vkCreateAccelerationStructureKHR(device->getRenderDevice()->getDevice(), &createInfo, nullptr, &m_accelerationStructure));
-
-	m_buildInfo.dstAccelerationStructure = m_accelerationStructure;
-	m_geometryInfo = geometryInfo;
-	m_device = device;
-}
-
-void BottomLevelAS::destroy()
-{
-	if (m_accelerationStructure != VK_NULL_HANDLE)
-	{
-		vkDestroyAccelerationStructureKHR(m_device->getRenderDevice()->getDevice(), m_accelerationStructure, nullptr);
-	}
-
-	m_device->getRenderDevice()->destroyBuffer(m_accelStorageBuffer);
 }
 
 void TopLevelAS::init(const RaytracingDevice* device)

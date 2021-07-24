@@ -61,7 +61,7 @@ public:
 /*       Load scene vertex data       */
 /**************************************/
 
-void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const std::vector<BottomLevelAS>& blasList,
+void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerationStructureInstanceKHR>& instances, const BLASBuildResult& buildResult,
 						 const aiScene* scene, aiNode* node, glm::mat4 transform, std::vector<uint32_t>& materialIndices, const std::vector<bool>& isMaterialOpaque)
 {
 	glm::mat4 nodeTransform = {
@@ -83,14 +83,14 @@ void parseSceneGraphNode(const RaytracingDevice* device, std::vector<VkAccelerat
 		flags |= isMaterialOpaque[materialIndex] ? VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR : VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
 
 		//Add instance
-		instances.push_back(device->compileInstances(blasList[node->mMeshes[i]], transform, node->mMeshes[i]/*gl_InstanceCustomIndexEXT*/, 0xFF, 0, flags));
+		instances.push_back(device->compileInstances(buildResult.blasList[node->mMeshes[i]], transform, node->mMeshes[i]/*gl_InstanceCustomIndexEXT*/, 0xFF, 0, flags));
 		materialIndices.push_back(materialIndex);
 	}
 
 	//Traverse children
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
-		parseSceneGraphNode(device, instances, blasList, scene, node->mChildren[i], transform, materialIndices, isMaterialOpaque);
+		parseSceneGraphNode(device, instances, buildResult, scene, node->mChildren[i], transform, materialIndices, isMaterialOpaque);
 	}
 }
 
@@ -175,8 +175,8 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 	*/
 
 	//Parse meshes
-	std::vector<BottomLevelAS> meshBLASList;
-
+	std::vector<BLASCreateInfo> blasCreateInfos;
+	
 	VkDevice deviceHandle = device->getRenderDevice()->getDevice();
 
 	const VkBufferUsageFlags vertexBufferUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
@@ -293,12 +293,11 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 			vkUnmapMemory(deviceHandle, stagingBuffer.memory);
 
 			//Create BLAS for mesh
-			std::shared_ptr<const BLASGeometryInfo> geomertryInfo = device->compileGeometry(vertexBufferDetails.buffer, sizeof(glm::vec3), mesh->mNumVertices, indexBufferDetails.buffer, mesh->mNumFaces, { 0 }, 0);
+			BLASCreateInfo blasCI = {};
+			blasCI.geometryInfo = device->compileGeometry(vertexBufferDetails.buffer, sizeof(glm::vec3), mesh->mNumVertices, indexBufferDetails.buffer, mesh->mNumFaces, { 0 }, 0);
+			blasCI.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
 
-			BottomLevelAS blas;
-			blas.init(device, geomertryInfo, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
-
-			meshBLASList.push_back(blas);
+			blasCreateInfos.push_back(blasCI);
 
 			representation.meshBuffers.push_back({
 				vertexBufferDetails.buffer,
@@ -325,12 +324,13 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 
 	representation.meshMemory = sceneMemory;
 
-	device->buildBLAS(meshBLASList);
+	//Build BLAS
+	BLASBuildResult buildResult = device->buildBLAS(blasCreateInfos);
 
 	//Parse scene graph
 	std::vector<VkAccelerationStructureInstanceKHR> accelStructInstances;
 
-	parseSceneGraphNode(device, accelStructInstances, meshBLASList, scene, scene->mRootNode, glm::identity<glm::mat4>(), materialIndices, representation.isMaterialOpaque);
+	parseSceneGraphNode(device, accelStructInstances, buildResult, scene, scene->mRootNode, glm::identity<glm::mat4>(), materialIndices, representation.isMaterialOpaque);
 
 	//Build TLAS
 	TopLevelAS tlas;
@@ -338,7 +338,7 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 
 	device->buildTLAS(tlas, accelStructInstances, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
 
-	representation.blasList = std::move(meshBLASList);
+	representation.blasBuildResult = std::move(buildResult);
 	representation.tlas = std::move(tlas);
 }
 
@@ -441,9 +441,8 @@ struct ImageAllocDetails
 
 bool pushTexture(const RaytracingDevice* device, const char* scenePath, const aiScene* scene, std::vector<ImageAllocDetails>& imageAllocDetails, int materialIndex, aiTextureType textureType, uint32_t& textureIndex)
 {
+	VkPhysicalDevice physicalDeviceHandle = device->getRenderDevice()->getPhysicalDevice();
 	VkDevice deviceHandle = device->getRenderDevice()->getDevice();
-
-	//TODO: Only 3 channels for some materials
 
 	int width = 0;
 	int height = 0;
@@ -583,7 +582,6 @@ void loadMaterials(const RaytracingDevice* device, const char* scenePath, const 
 		FATAL_ERROR("Could not find memory type that supports all images");
 	}
 
-	//Allocate scene memory
 	uint32_t sceneMemTypeIndex = device->getRenderDevice()->findMemoryType(mutualMemoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	if (sceneMemTypeIndex == (uint32_t)-1)
@@ -912,7 +910,7 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	createSceneDescriptorSets(device, *representation, materialIndices);
 
 	//Load camera data
-	if (scene->HasCameras())
+	if (scene->HasCameras() && false)
 	{
 		const aiCamera* camera = scene->mCameras[0];
 
@@ -957,9 +955,9 @@ Scene::~Scene()
 	//Destroy acceleration structures
 	tlas.destroy();
 
-	for (BottomLevelAS& blas : blasList)
+	for (BottomLevelAS& blas : blasBuildResult.blasList)
 	{
-		blas.destroy();
+		device->destroyBLAS(blas);
 	}
 
 	//Destroy buffers

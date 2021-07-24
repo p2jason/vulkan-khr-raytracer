@@ -77,7 +77,7 @@ class Scene
 {
 public:
 	TopLevelAS tlas;
-	std::vector<BottomLevelAS> blasList;
+	BLASBuildResult blasBuildResult;
 
 	//The memory from which all mesh buffers are allocated (this does 
 	//not include acceleration structures, only vertex and index data)
