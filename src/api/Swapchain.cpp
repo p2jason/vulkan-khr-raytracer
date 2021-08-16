@@ -24,7 +24,7 @@ std::vector<const char*> SwapchainFactory::determineInstanceExtensions()
 
 			m_instanceExtensions.extSwapchainColorspace = true;
 		}
-		else if(!strcmp(name, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME))
+		else if (!strcmp(name, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME))
 		{
 			requiredExtensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
 
@@ -108,7 +108,8 @@ SurfaceProfile SwapchainFactory::createProfileForSurface(VkPhysicalDevice device
 
 		switch (fullscreenMode)
 		{
-		default:case FullScreenExclusiveMode::DEFAULT: 
+		default:
+		case FullScreenExclusiveMode::DEFAULT: 
 			surfaceExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
 			break;
 		case FullScreenExclusiveMode::DISALLOWED:
@@ -202,7 +203,7 @@ Swapchain SwapchainFactory::createSwapchain(VkDevice device, VkSurfaceKHR surfac
 	VkSurfaceFormatKHR scFormat = surfaceProfile.surfaceFormats[0];
 	for (VkSurfaceFormatKHR format : surfaceProfile.surfaceFormats)
 	{
-		if (format.format == VK_FORMAT_B8G8R8A8_UNORM && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+		if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 		{
 			scFormat = format;
 			break;

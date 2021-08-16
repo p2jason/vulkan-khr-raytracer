@@ -41,7 +41,7 @@ PipelineDefFunc s_pipelineFunctions[] = {
 };
 
 VulkanKHRRaytracer::VulkanKHRRaytracer() :
-	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(0),
+	m_reloadScene(true), m_changedPipeline(false), m_selectedPipelineIndex(1),
 	m_showMessageDialog(false), m_reloadOptions(nullptr), m_skipPipeline(true)
 {
 	m_camera = std::make_shared<PerspectiveCamera>(&m_window);

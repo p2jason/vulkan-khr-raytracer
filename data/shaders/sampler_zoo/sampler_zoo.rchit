@@ -16,6 +16,7 @@ layout(set = 0, binding = 2, scalar) buffer VertexNBuffers { vec3 v[]; } normalB
 layout(set = 0, binding = 4, scalar) buffer IndexBuffers { uvec3 i[]; } indexBuffers[];
 
 layout(push_constant) uniform PushConstants {
+	float lightIntensity;
 	int sampleCount;
 };
 
@@ -67,5 +68,5 @@ void main() {
 	
 	float lightDistance = distance(lightPos, origin);
 	
-	payload.hitValue = vec3(14.0 / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(sampleCount));
+	payload.hitValue = vec3(lightIntensity / (1.0 + lightDistance * lightDistance)) * (float(hitCount) / float(sampleCount));
 }

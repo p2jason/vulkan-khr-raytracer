@@ -54,7 +54,7 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 
 	pipelineInfo.maxRecursionDepth = 2;
 
-	pipelineInfo.pushConstants.push_back({ VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_sampleCount) });
+	pipelineInfo.pushConstants.push_back({ VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_lightIntensity) + sizeof(m_sampleCount) });
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {
@@ -157,6 +157,12 @@ void SamplerZooPipeline::drawOptionsUI()
 	}
 
 	ImGui::SetNextItemWidth(150);
+	if (ImGui::InputFloat("Light intensity", &m_lightIntensity, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
+	{
+		m_lightIntensity = std::fmax(m_lightIntensity, 0);
+	}
+
+	ImGui::SetNextItemWidth(150);
 	if (ImGui::InputInt("Sample count", &m_sampleCount, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
 	{
 		m_sampleCount = std::max(m_sampleCount, 1);
@@ -196,6 +202,7 @@ void SamplerZooPipeline::bind(VkCommandBuffer commandBuffer)
 		m_renderTargetInitialized = true;
 	}
 
-	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_sampleCount), &m_sampleCount);
+	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_lightIntensity), &m_lightIntensity);
+	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, sizeof(m_lightIntensity), sizeof(m_sampleCount), &m_sampleCount);
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 1, 1, &m_descriptorSet, 0, nullptr);
 }

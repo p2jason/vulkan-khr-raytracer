@@ -13,6 +13,7 @@ private:
 	int m_width = 1;
 	int m_height = 1;
 
+	float m_lightIntensity = 7.0f;
 	int m_sampleCount = 16;
 	int m_samplerIndex = 0;
 

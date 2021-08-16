@@ -362,7 +362,21 @@ void ScenePresenter::initImGui(const Window& window)
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
+	//Setup style colors
 	ImGui::StyleColorsDark();
+
+	for (int i = 0; i < ImGuiCol_COUNT; ++i)
+	{
+		const float gamma = 2.2f;
+
+		ImVec4 color = ImGui::GetStyle().Colors[i];
+
+		color.x = pow(color.x, gamma);
+		color.y = pow(color.y, gamma);
+		color.z = pow(color.z, gamma);
+
+		ImGui::GetStyle().Colors[i] = color;
+	}
 
 	if (!ImGui_ImplVulkan_LoadFunctions(&imguiLoadVulkanFunc, (void*)m_device))
 	{

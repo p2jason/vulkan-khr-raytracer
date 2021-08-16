@@ -910,7 +910,7 @@ std::shared_ptr<Scene> SceneLoader::loadScene(const RaytracingDevice* device, co
 	createSceneDescriptorSets(device, *representation, materialIndices);
 
 	//Load camera data
-	if (scene->HasCameras() && false)
+	if (scene->HasCameras())
 	{
 		const aiCamera* camera = scene->mCameras[0];
 
