@@ -15,12 +15,12 @@ class VulkanKHRRaytracer
 {
 private:
 	Window m_window;
-	int m_startingWidth = 1920;
-	int m_startingHeight = 1080;
+	int m_startingWidth = 1280;
+	int m_startingHeight = 720;
 
 	std::shared_ptr<Camera> m_camera = nullptr;
-	int m_renderTargetWidth = 1920;
-	int m_renderTargetHeight = 1080;
+	int m_renderTargetWidth = 1280;
+	int m_renderTargetHeight = 720;
 
 	char m_scenePath[1024] = { 0 };
 

@@ -6,6 +6,7 @@
 #include <string>
 #include <mutex>
 
+#include <vulkan/vulkan.h>
 #include <volk.h>
 
 #include "Window.h"

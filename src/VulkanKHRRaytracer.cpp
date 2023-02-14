@@ -248,6 +248,7 @@ void VulkanKHRRaytracer::drawUI()
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
+	ImGui::SetNextWindowSize(ImVec2(342, 432), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Frame"))
 	{
 		if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
@@ -399,7 +400,7 @@ void VulkanKHRRaytracer::drawUI()
 
 void VulkanKHRRaytracer::showPerformancePopup()
 {
-	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
 
 	float padding = 10.0f;
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -411,7 +412,6 @@ void VulkanKHRRaytracer::showPerformancePopup()
 	ImVec2 window_pos_pivot(1.0f, 1.0f);
 
 	ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
-	ImGui::SetNextWindowViewport(viewport->ID);
 	ImGui::SetNextWindowBgAlpha(0.35f);
 
 	bool alwaysTrue = true;

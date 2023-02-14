@@ -548,6 +548,15 @@ void loadMaterials(const RaytracingDevice* device, const char* scenePath, const 
 		progress->setStageProgress((float)i / (scene->mNumMaterials + 1));
 	}
 
+	if (imageAllocDetails.size() == 0)
+	{
+		//No images are used
+		representation.textureMemory = VK_NULL_HANDLE;
+		progress->setStageProgress(1.0f);
+
+		return;
+	}
+
 	//Calculate memory requirements
 	//Note: Look at buffer allocation for more details
 	VkDeviceSize totalImageSize = 0;

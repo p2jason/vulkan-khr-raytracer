@@ -5,6 +5,15 @@
 class SamplerZooPipeline : public NativeRaytracingPipeline
 {
 private:
+	struct PushConstants
+	{
+		int sampleCount = 16;
+
+		float lightIntensity = 7.0f;
+		float lightRadius = 1.0;
+		glm::vec3 lightPos = { 0, 4, 0 };
+	};
+
 	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
 	VkDescriptorSetLayout m_descSetLayout = VK_NULL_HANDLE;
 	VkDescriptorSet m_descriptorSet = VK_NULL_HANDLE;
@@ -13,8 +22,7 @@ private:
 	int m_width = 1;
 	int m_height = 1;
 
-	float m_lightIntensity = 7.0f;
-	int m_sampleCount = 16;
+	PushConstants m_pushConstants = {};
 	int m_samplerIndex = 0;
 
 	bool m_renderTargetInitialized = false;
@@ -35,5 +43,5 @@ public:
 	inline Image getRenderTarget() const override { return m_renderTarget; }
 	inline glm::ivec2 getRenderTargetSize() const override { return glm::ivec2(m_width, m_height); }
 
-	std::shared_ptr<void> getReloadOptions() const override { return std::make_shared<std::pair<int, int>>(m_sampleCount, m_samplerIndex); }
+	std::shared_ptr<void> getReloadOptions() const override { return std::make_shared<std::pair<PushConstants, int>>(m_pushConstants, m_samplerIndex); }
 };

@@ -187,7 +187,7 @@ BLASBuildResult RaytracingDevice::buildBLAS(std::vector<BLASCreateInfo>& blasCIL
 		*/
 
 		BottomLevelAS blas;
-		blas.geometryInfo = std::move(createInfo.geometryInfo);
+		blas.geometryInfo = createInfo.geometryInfo;
 
 		blas.buildInfo = {};
 		blas.buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -273,6 +273,8 @@ BLASBuildResult RaytracingDevice::buildBLAS(std::vector<BLASCreateInfo>& blasCIL
 
 	VkDeviceMemory accelStructMemory = VK_NULL_HANDLE;
 	VK_CHECK(vkAllocateMemory(deviceHandle, &memAllocInfo, nullptr, &accelStructMemory));
+
+	static volatile auto deoptimizer = totalStoreSize;
 
 	std::cout << "Building BLAS list (" << blasList.size() << "): ";
 
@@ -530,7 +532,7 @@ void RaytracingDevice::buildTLAS(TopLevelAS& tlas, const std::vector<VkAccelerat
 	VK_CHECK(vkCreateAccelerationStructureKHR(m_renderDevice->getDevice(), &createInfo, nullptr, &tlas.m_accelerationStructure));
 
 	//Create scratch memory
-	Buffer scratchBuffer = m_renderDevice->createBuffer(sizeInfo.buildScratchSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	Buffer scratchBuffer = m_renderDevice->createBuffer(sizeInfo.buildScratchSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	VkDeviceAddress scratchAddress = m_renderDevice->getBufferAddress(scratchBuffer.buffer);
 
 	buildInfo.dstAccelerationStructure = tlas.m_accelerationStructure;

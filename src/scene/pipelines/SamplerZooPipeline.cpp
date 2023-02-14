@@ -31,9 +31,9 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 	//Load options
 	if (reloadOptions)
 	{
-		std::shared_ptr<std::pair<int, int>> options = std::static_pointer_cast<std::pair<int, int>>(reloadOptions);
+		std::shared_ptr<std::pair<PushConstants, int>> options = std::static_pointer_cast<std::pair<PushConstants, int>>(reloadOptions);
 
-		m_sampleCount = options->first;
+		m_pushConstants = options->first;
 		m_samplerIndex = options->second;
 	}
 
@@ -53,8 +53,7 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 	}
 
 	pipelineInfo.maxRecursionDepth = 2;
-
-	pipelineInfo.pushConstants.push_back({ VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_lightIntensity) + sizeof(m_sampleCount) });
+	pipelineInfo.pushConstants.push_back({ VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0,  sizeof(m_pushConstants) });
 
 	//Create descriptor set layout
 	VkDescriptorSetLayoutBinding bindings[] = {
@@ -150,6 +149,8 @@ const char* SamplerZooPipeline::getDescription() const
 
 void SamplerZooPipeline::drawOptionsUI()
 {
+	float positionFloats[3] = { m_pushConstants.lightPos[0], m_pushConstants.lightPos[1], m_pushConstants.lightPos[2] };
+
 	ImGui::SetNextItemWidth(std::max(std::min(200.0f, ImGui::GetContentRegionAvail().x), 100.0f));
 	if (ImGui::Combo("Sampler", &m_samplerIndex, s_samplerNames, sizeof(s_samplerNames) / sizeof(s_samplerNames[0])))
 	{
@@ -157,15 +158,27 @@ void SamplerZooPipeline::drawOptionsUI()
 	}
 
 	ImGui::SetNextItemWidth(150);
-	if (ImGui::InputFloat("Light intensity", &m_lightIntensity, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
+	if (ImGui::InputFloat("Light intensity", &m_pushConstants.lightIntensity, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
 	{
-		m_lightIntensity = std::fmax(m_lightIntensity, 0);
+		m_pushConstants.lightIntensity = std::max(m_pushConstants.lightIntensity, 0.0f);
 	}
 
 	ImGui::SetNextItemWidth(150);
-	if (ImGui::InputInt("Sample count", &m_sampleCount, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
+	if (ImGui::InputFloat("Light radius", &m_pushConstants.lightRadius, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
 	{
-		m_sampleCount = std::max(m_sampleCount, 1);
+		m_pushConstants.lightRadius = std::max(m_pushConstants.lightRadius, 0.0f);
+	}
+
+	ImGui::SetNextItemWidth(150);
+	if (ImGui::InputFloat3("Light position", positionFloats, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
+	{
+		m_pushConstants.lightPos = { positionFloats[0], positionFloats[1], positionFloats[2] };
+	}
+
+	ImGui::SetNextItemWidth(150);
+	if (ImGui::InputInt("Sample count", &m_pushConstants.sampleCount, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
+	{
+		m_pushConstants.sampleCount = std::max(m_pushConstants.sampleCount, 1);
 	}
 }
 
@@ -202,7 +215,6 @@ void SamplerZooPipeline::bind(VkCommandBuffer commandBuffer)
 		m_renderTargetInitialized = true;
 	}
 
-	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(m_lightIntensity), &m_lightIntensity);
-	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, sizeof(m_lightIntensity), sizeof(m_sampleCount), &m_sampleCount);
+	vkCmdPushConstants(commandBuffer, m_layout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0, sizeof(PushConstants), &m_pushConstants);
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_layout, 1, 1, &m_descriptorSet, 0, nullptr);
 }

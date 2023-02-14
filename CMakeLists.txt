@@ -13,10 +13,11 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 # Setup Vulkan-Headers
-set(VK_HEADERS_INCLUDE "${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include")
+add_subdirectory(third_party/Vulkan-Headers)
 
-add_library(Vulkan-Headers INTERFACE)
-target_include_directories(Vulkan-Headers INTERFACE ${VK_HEADERS_INCLUDE})
+if(WIN32)
+	target_compile_definitions(Vulkan-Headers INTERFACE VK_USE_PLATFORM_WIN32_KHR VK_NO_PROTOTYPES)
+endif()
 
 # Setup VOLK
 set(VOLK_ROOT "${PROJECT_SOURCE_DIR}/third_party/volk")
@@ -33,58 +34,27 @@ add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE ${GLM_ROOT})
 
 # Setup GLFW
-set(GLFW_ROOT "${PROJECT_SOURCE_DIR}/third_party/glfw")
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "")
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "")
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "")
+set(GLFW_INSTALL OFF CACHE BOOL "")
 
-if(WIN32)
-	set(GLFW_PLATFORM_SOURCES ${GLFW_ROOT}/src/win32_init.c
-							  ${GLFW_ROOT}/src/win32_joystick.c
-							  ${GLFW_ROOT}/src/win32_monitor.c
-							  ${GLFW_ROOT}/src/win32_time.c
-							  ${GLFW_ROOT}/src/win32_thread.c
-							  ${GLFW_ROOT}/src/win32_window.c
-							  ${GLFW_ROOT}/src/wgl_context.c
-							  ${GLFW_ROOT}/src/egl_context.c
-							  ${GLFW_ROOT}/src/osmesa_context.c)
-	
-	add_compile_definitions(_GLFW_WIN32)
-	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-	add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
-elseif(APPLE)
-	set(GLFW_PLATFORM_SOURCES "")
-elseif(UNIX)
-	set(GLFW_PLATFORM_SOURCES ${GLFW_ROOT}/src/x11_init.c
-							  ${GLFW_ROOT}/src/x11_monitor.c
-							  ${GLFW_ROOT}/src/x11_window.c
-							  ${GLFW_ROOT}/src/xkb_unicode.c
-							  ${GLFW_ROOT}/src/posix_time.c
-							  ${GLFW_ROOT}/src/posix_thread.c
-							  ${GLFW_ROOT}/src/glx_context.c
-							  ${GLFW_ROOT}/src/egl_context.c
-							  ${GLFW_ROOT}/src/osmesa_context.c
-							  ${GLFW_ROOT}/src/linux_joystick.c)
-	
-	add_compile_definitions(_GLFW_X11)
-endif()
-
-set(GLFW_SOURCES ${GLFW_ROOT}/src/glfw_config.h
-				 ${GLFW_ROOT}/src/context.c
-				 ${GLFW_ROOT}/src/init.c
-				 ${GLFW_ROOT}/src/input.c
-				 ${GLFW_ROOT}/src/monitor.c
-				 ${GLFW_ROOT}/src/vulkan.c
-				 ${GLFW_ROOT}/src/window.c
-				 ${GLFW_PLATFORM_SOURCES})
-
-add_library(glfw STATIC ${GLFW_SOURCES})
-target_include_directories(glfw PUBLIC ${GLFW_ROOT}/include)
-
-target_link_libraries(glfw Vulkan-Headers volk)
+add_subdirectory(third_party/glfw)
 
 # Setup ASSIMP
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "Turn off ASSIMP tests.")
 set(ASSIMP_INSTALL OFF CACHE BOOL "Do not install ASSIMP")
 set(ASSIMP_BUILD_DRACO OFF CACHE BOOL "Do not install ASSIMP")
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "Do not build ASSIMP tools")
+set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "")
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+
+set(ASSIMP_NO_EXPORT ON CACHE BOOL "")
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "")
+set(ASSIMP_BUILD_OBJ_IMPORTER ON CACHE BOOL "")
+set(ASSIMP_BUILD_FBX_IMPORTER ON CACHE BOOL "")
+set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE BOOL "")
+set(ASSIMP_BUILD_ASSIMP_VIEW OFF CACHE BOOL "")
 
 add_subdirectory(third_party/assimp)
 

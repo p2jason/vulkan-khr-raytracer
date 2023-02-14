@@ -16,8 +16,14 @@ layout(set = 0, binding = 2, scalar) buffer VertexNBuffers { vec3 v[]; } normalB
 layout(set = 0, binding = 4, scalar) buffer IndexBuffers { uvec3 i[]; } indexBuffers[];
 
 layout(push_constant) uniform PushConstants {
-	float lightIntensity;
 	int sampleCount;
+	float lightIntensity;
+	float lightRadius;
+	
+	//Don't even get me started on GLSL's variable alignment nonsense
+	float lightPosX;
+	float lightPosY;
+	float lightPosZ;
 };
 
 void main() {
@@ -35,8 +41,7 @@ void main() {
 	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + normal * NORMAL_EPSILON;
 	
 	//Compute light coverage
-	const vec3 lightPos = vec3(0, 4, 0);
-	const float lightRadius = 1.0;
+	const vec3 lightPos = vec3(lightPosX, lightPosY, lightPosZ);
 	
 	float hitCount = 0;
 	
