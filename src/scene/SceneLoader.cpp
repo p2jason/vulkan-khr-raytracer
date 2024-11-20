@@ -231,8 +231,13 @@ void loadSceneGraph(const RaytracingDevice* device, const aiScene* scene, Scene&
 		FATAL_ERROR("Could not find appropriate memory type for scene");
 	}
 
+	VkMemoryAllocateFlagsInfo memAllocFlags = {};
+	memAllocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	memAllocFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+
 	VkMemoryAllocateInfo memAllocInfo = {};
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.pNext = &memAllocFlags;
 	memAllocInfo.allocationSize = totalSceneSize;
 	memAllocInfo.memoryTypeIndex = sceneMemTypeIndex;
 

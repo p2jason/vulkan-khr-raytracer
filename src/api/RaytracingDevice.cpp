@@ -53,7 +53,7 @@ RaytracingDeviceFeatures* RaytracingDevice::init(RenderDevice* renderDevice)
 
 	features->accelStructFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR, nullptr, VK_TRUE, VK_FALSE, VK_FALSE, VK_FALSE, VK_TRUE };
 	features->rtPipelineFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR, &features->accelStructFeatures, VK_TRUE, VK_FALSE, VK_FALSE, VK_FALSE, VK_FALSE };
-	features->bufferAddress = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT, &features->rtPipelineFeatures, VK_TRUE, VK_FALSE, VK_FALSE };
+	features->bufferAddress = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES, &features->rtPipelineFeatures, VK_TRUE, VK_FALSE, VK_FALSE };
 
 	features->descriptorIndexing = {};
 	features->descriptorIndexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
@@ -266,8 +266,13 @@ BLASBuildResult RaytracingDevice::buildBLAS(std::vector<BLASCreateInfo>& blasCIL
 	}
 
 	//Allocate storage memory
+	VkMemoryAllocateFlagsInfo memAllocFlags = {};
+	memAllocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	memAllocFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+
 	VkMemoryAllocateInfo memAllocInfo = {};
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.pNext = &memAllocFlags;
 	memAllocInfo.allocationSize = totalStoreSize;
 	memAllocInfo.memoryTypeIndex = memTypeIndex;
 
@@ -412,6 +417,7 @@ BLASBuildResult RaytracingDevice::buildBLAS(std::vector<BLASCreateInfo>& blasCIL
 	//Allocate compact storage memory
 	memAllocInfo = {};
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.pNext = &memAllocFlags;
 	memAllocInfo.allocationSize = totalStoreSize;
 	memAllocInfo.memoryTypeIndex = memTypeIndex;
 
@@ -579,7 +585,7 @@ std::vector<const char*> RaytracingDevice::getRequiredExtensions() const
 		VK_KHR_MAINTENANCE3_EXTENSION_NAME,
 		VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-		VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+//		VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
 	};
 }
 

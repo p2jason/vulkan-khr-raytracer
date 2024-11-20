@@ -9,7 +9,7 @@ struct RaytracingDeviceFeatures
 {
 	VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeatures = {};
 	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures = {};
-	VkPhysicalDeviceBufferAddressFeaturesEXT bufferAddress = {};
+	VkPhysicalDeviceBufferDeviceAddressFeatures bufferAddress = {};
 	VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexing = {};
 	VkPhysicalDeviceHostQueryResetFeatures hostQueryReset = {};
 	VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayout = {};

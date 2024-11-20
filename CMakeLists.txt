@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.7 FATAL_ERROR)
 
 project(VulkanKHRRaytracer)
 
-find_package(Vulkan REQUIRED FATAL_ERROR)
+# find_package(Vulkan REQUIRED FATAL_ERROR)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
