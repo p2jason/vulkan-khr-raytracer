@@ -52,7 +52,7 @@ bool SamplerZooPipeline::create(const RaytracingDevice* device, RTPipelineInfo& 
 		return false;
 	}
 
-	pipelineInfo.maxRecursionDepth = 2;
+	pipelineInfo.maxRecursionDepth = 1;
 	pipelineInfo.pushConstants.push_back({ VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0,  sizeof(m_pushConstants) });
 
 	//Create descriptor set layout

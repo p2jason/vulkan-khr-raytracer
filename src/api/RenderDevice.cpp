@@ -347,6 +347,9 @@ void RenderDevice::choosePhysicalDevice()
 		vkGetPhysicalDeviceFeatures(physicalDevices[i], &features);
 
 		bestDevice = physicalDevices[i];
+
+		if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+			break;
 	}
 
 	delete[] physicalDevices;
@@ -357,7 +360,12 @@ void RenderDevice::choosePhysicalDevice()
 	}
 
 	m_physicalDevice = bestDevice;
+	
+	VkPhysicalDeviceProperties properties;
+	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
 	vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_memProperties);
+
+	printf("Chosen physical device: %s\n", properties.deviceName);
 }
 
 void RenderDevice::getPhysicalDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNextChain) const
